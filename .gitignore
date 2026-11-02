@@ -1,0 +1,10 @@
+node_modules/
+dist/
+# Your own sheet music and transcriptions: keep copyrighted scores out of the repo
+scores/
+*.pdf
+*.musicxml
+*.mxl
+.DS_Store
+Thumbs.db
+.vscode/
