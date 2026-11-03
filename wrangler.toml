@@ -14,7 +14,7 @@ run_worker_first = ["/api/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "score-to-sound"
-database_id = "REPLACE_WITH_YOUR_DATABASE_ID"   # from: npx wrangler d1 create score-to-sound
+database_id = "ced2ad7c-628d-4c3f-8b02-8ebe2b4a986a"   # from: npx wrangler d1 create score-to-sound
 migrations_dir = "migrations"
 
 [observability]
