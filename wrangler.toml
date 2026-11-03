@@ -31,12 +31,11 @@ MODEL_PRIMARY = "claude-sonnet-5-5"
 MODEL_RETRY = "claude-opus-5-5"
 MAX_OUTPUT_TOKENS = "16000"
 # Who sign-in emails come from (must be a domain you verified in Resend).
-EMAIL_FROM = "Personal Accompanist <signin@example.com>"
+EMAIL_FROM = "Personal Accompanist <signin@scoretosound.com>"
 # Abuse limits
 PAGES_PER_HOUR = "60"
 EMAILS_PER_HOUR = "5"
 TRIALS_PER_NETWORK_PER_DAY = "20"   # generous: a whole choir may sign up on one church or school Wi-Fi
-
 # Secrets (never put these in this file): set them with `npx wrangler secret put NAME`
 #   ANTHROPIC_API_KEY     your Claude API key
 #   RESEND_API_KEY        for sign-in emails
