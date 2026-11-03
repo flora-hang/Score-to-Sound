@@ -6,6 +6,8 @@ import { buildTimeline, measureAt } from "./engine/timeline.js";
 import { DEMO } from "./engine/demo.js";
 import { usePlayer, useClock } from "./hooks/usePlayer.js";
 import useClaude from "./hooks/useClaude.js";
+import useAccount from "./hooks/useAccount.js";
+import AccountDialog from "./components/AccountDialog.jsx";
 import useToast from "./hooks/useToast.js";
 import useMediaQuery from "./hooks/useMediaQuery.js";
 import AppBar from "./components/AppBar.jsx";
@@ -69,6 +71,7 @@ export default function App(){
   const railRef = useRef(null);
 
   const claude = useClaude();
+  const account = useAccount(toast);
 
   // The score in the chosen key, with every note's timing and expression worked out.
   const view = useMemo(() => {
@@ -295,7 +298,8 @@ export default function App(){
     <div className="app">
       <AppBar title={doc.score.title} composer={doc.score.composer}
         onOpen={() => setDialog("import")} onLibrary={() => setDialog("library")} onEdit={toggleEditing}
-        onShortcuts={() => setDialog("keys")} onToggleRail={() => setRailOpen(o => !o)} editing={editing} />
+        onShortcuts={() => setDialog("keys")} onToggleRail={() => setRailOpen(o => !o)} editing={editing}
+        account={account} onAccount={() => setDialog("account")} />
       <div className="work">
         <ScoreView view={view} transpose={transpose} zoom={zoom} lyricsAbove={lyricsAbove} hiddenLines={hiddenLines}
           clock={clock} playing={playing} cursor={cursor} follow={follow} mix={mix} tempoF={tempoF} onSeek={seek}
@@ -315,7 +319,8 @@ export default function App(){
         onPrevBar={() => barStep(-1)} onNextBar={() => barStep(1)} onSeek={seek}
         onTempo={changeTempo} onTranspose={changeKey} onMetronome={setMetronome} onCountIn={setCountIn} />
 
-      {dialog === "import" && <ImportDialog sample={claude.sample} onClose={closeDialog} onOpenText={text => {
+      {dialog === "account" && <AccountDialog account={account} onClose={closeDialog} />}
+      {dialog === "import" && <ImportDialog sample={claude.sample} account={account} onClose={closeDialog} onOpenText={text => {
         const warns = openScore(text);
         setDialog(null);
         toast(warns.length ? `Opened with ${warns.length} thing${warns.length === 1 ? "" : "s"} to check` : "Score opened");
