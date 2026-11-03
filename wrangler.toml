@@ -1,0 +1,45 @@
+# Cloudflare Worker: serves the app (from dist/) and the /api server.
+# Setup steps are in DEPLOY.md.
+name = "score-to-sound"
+main = "worker/index.js"
+compatibility_date = "2025-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "score-to-sound"
+database_id = "REPLACE_WITH_YOUR_DATABASE_ID"   # from: npx wrangler d1 create score-to-sound
+migrations_dir = "migrations"
+
+[observability]
+enabled = true
+
+[vars]
+APP_NAME = "Personal Accompanist"
+# Songs a new account gets for free, and how many pages count as one song.
+TRIAL_SONGS = "1"
+PAGES_PER_SONG = "6"
+MAX_PAGES = "40"
+# First reading of a page uses MODEL_PRIMARY; the free retries use MODEL_RETRY.
+MODEL_PRIMARY = "claude-sonnet-5-5"
+MODEL_RETRY = "claude-opus-5-5"
+MAX_OUTPUT_TOKENS = "16000"
+# Who sign-in emails come from (must be a domain you verified in Resend).
+EMAIL_FROM = "Personal Accompanist <signin@example.com>"
+# Abuse limits
+PAGES_PER_HOUR = "60"
+EMAILS_PER_HOUR = "5"
+TRIALS_PER_NETWORK_PER_DAY = "20"   # generous: a whole choir may sign up on one church or school Wi-Fi
+
+# Secrets (never put these in this file): set them with `npx wrangler secret put NAME`
+#   ANTHROPIC_API_KEY     your Claude API key
+#   RESEND_API_KEY        for sign-in emails
+#   GOOGLE_CLIENT_ID      for "Continue with Google"
+#   GOOGLE_CLIENT_SECRET
+# For local development put them in .dev.vars instead (see dev.vars.example).

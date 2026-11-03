@@ -8,3 +8,7 @@ scores/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Cloudflare local development
+.dev.vars
+.wrangler/

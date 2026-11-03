@@ -1,0 +1,7 @@
+# Copy this file to .dev.vars for local development (`npm run dev:full`). Never commit .dev.vars.
+ANTHROPIC_API_KEY=sk-ant-...
+# Leave RESEND_API_KEY empty locally: with DEV_MODE=1 the sign-in link is shown on screen instead of emailed.
+RESEND_API_KEY=
+DEV_MODE=1
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=

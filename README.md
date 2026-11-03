@@ -26,7 +26,7 @@ npm run preview    # serve the production build
 
 **Publish to GitHub Pages:** push to `main`, then in the repo's Settings → Pages choose **Source: GitHub Actions**. The included workflow builds and deploys automatically.
 
-**Two features need Claude.** Reading PDFs and photos, and the saved Library, use capabilities available when the app runs as a Claude artifact. Anywhere else the app shows a message for those two features, and everything else, including MusicXML import, works. To read PDFs on your own site you'd need a small server that calls the Claude API; never put an API key in the page.
+**AI reading of PDFs and photos** runs through a small server on Cloudflare (in `worker/`) that calls the Claude API with your key, with sign-in (email link or Google), one free song per new account, and song credits. See **[DEPLOY.md](DEPLOY.md)** for step-by-step setup. Without the server (for example on GitHub Pages) the app offers the free route instead: convert the PDF with [Audiveris](https://github.com/Audiveris/audiveris) and open the MusicXML.
 
 ## How it's built
 
@@ -43,6 +43,8 @@ src/
 │   ├── Sidebar.jsx         What plays (parts) and practice options
 │   ├── Transport.jsx       Play controls, position, tempo and key
 │   ├── ImportDialog.jsx    Open MusicXML, PDFs and photos; page-by-page reading with Stop and Retry
+│   ├── AccountDialog.jsx   Sign in (email link, Google), songs left, upgrade options
+│   ├── FreeReaderGuide.jsx The free route: Audiveris → MusicXML
 │   ├── LibraryDialog.jsx   Saved songs (Claude only)
 │   ├── EditToolbar.jsx     The editing strip: pitch, accidentals, length, marks, lyrics, undo
 │   ├── EditNotesDialog.jsx Edit the whole score as text
@@ -54,17 +56,30 @@ src/
 │   ├── usePlayer.js        The audio engine and a 60 fps clock components can subscribe to
 │   ├── useClaude.js        Detects Claude capabilities (page reading, private storage)
 │   ├── useToast.js         Short status messages
-│   └── useMediaQuery.js    Responsive layout switches
+│   ├── useMediaQuery.js    Responsive layout switches
+│   └── useAccount.js       Signed-in person and their song credits
+├── api.js                  Calls to our server: sign-in, credits, AI reading (streamed)
 └── engine/                 Plain JavaScript, no React
-    ├── notation.js         Text notation parser
+    ├── notation.js         Text notation parser and writer (round-trips exactly)
+    ├── edit.js             Visual editing operations (pitch, accidentals, length, rest, tie, lyrics…)
     ├── keys.js             Key signatures and transposition with correct spelling
     ├── timeline.js         Note timing, tempo map (rit., fermatas) and expressive shaping
     ├── engrave.js          VexFlow engraving with collision-free layout bands
     ├── playhead.js         Playhead, note highlighting and page turns
     ├── audio.js            Four-layer sampled piano and the playback scheduler
     ├── musicxml.js         MusicXML import (all lyric lines)
-    ├── reader.js           PDF/photo pages → notation via Claude
+    ├── reader.js           PDF/photo pages → images; MusicXML files
+    ├── prompt.js           The page-reading instructions (shared with the server)
     └── demo.js             Example score (Amazing Grace, public domain)
+worker/                     Cloudflare Worker (the server)
+├── index.js                Routes
+├── auth.js                 Email-link and Google sign-in, sessions, free trial
+├── credits.js              Song credits: monthly and never-expiring buckets, charging, refunds
+├── reading.js              AI reading jobs: charge once per score, read pages, refund if nothing read
+├── claude.js               Streaming calls to the Claude Messages API
+└── util.js                 Helpers: JSON, cookies, hashing, rate limits
+migrations/0001_init.sql    Database tables (Cloudflare D1)
+wrangler.toml               Cloudflare configuration and settings
 ```
 
 Design notes:
@@ -73,6 +88,8 @@ Design notes:
 - **Fast things bypass re-rendering.** The playhead moves 60 times a second. Instead of storing the position in state, `useClock` lets `ScoreView` and `Transport` subscribe and update only what changed, so the rest of the app doesn't re-render every frame.
 - **VexFlow is wrapped, not rewritten.** `ScoreView` gives VexFlow an empty element through a ref and re-engraves in a layout effect when the music, size or lyric options change.
 - **Editing goes through one path.** Every visual edit changes a copy of the score, writes it back to text notation and re-reads it. Undo/redo, saving and the text editor all see exactly the same score. Edits made while the song is transposed are applied as intervals, so they land correctly in the original key.
+- **The server builds the prompt.** The browser only sends page images; the reading instructions are put together on the server from the pages already read. Your API key can only ever be used to read sheet music, and the key never reaches the browser.
+- **Credits are safe against double-spending.** Songs are taken with a single conditional database update, every change is recorded in a ledger, and a score that can't be read at all is refunded.
 - **Heavy libraries load on demand.** PDF.js and JSZip are only downloaded when you open a file that needs them.
 
 ## Your scores
