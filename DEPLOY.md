@@ -65,7 +65,7 @@ You can add the first one now and the others as you finish steps 3 and 4. Each f
 ## 4. Google: "Continue with Google"
 
 1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a project named `Score to Sound`.
-2. Open **APIs & Services → OAuth consent screen** (also called "Google Auth Platform"). Choose **External**, fill in the app name, support email and logo, and add the scopes `openid`, `email` and `profile`.
+2. Open **APIs & Services → OAuth consent screen** (also called "Google Auth Platform"). Choose **External**, fill in the app name and support email, and add the scopes `openid`, `email` and `profile`. Under **Branding**, add your home page (`https://scoretosound.com`), privacy policy (`https://scoretosound.com/privacy`) and terms of service (`https://scoretosound.com/terms`). Leave the logo out at first: adding one makes Google review your branding, which takes days.
 3. Open **Credentials → Create credentials → OAuth client ID**, type **Web application**.
 4. Under **Authorized redirect URIs** add:
    `https://score-to-sound.yourname.workers.dev/api/auth/google/callback`

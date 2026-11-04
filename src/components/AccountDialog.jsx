@@ -42,7 +42,7 @@ export function SignInForm({config, intro}){
         </form>
       )}
       {msg && <div className="err-msg">{msg}</div>}
-      <p className="fine">No password needed. We only use your email to sign you in and keep track of your songs.</p>
+      <p className="fine">No password needed. We only use your email to sign you in and keep track of your songs. By signing in, you agree to the <a href="./terms" target="_blank" rel="noopener">Terms of service</a> and <a href="./privacy" target="_blank" rel="noopener">Privacy policy</a>.</p>
     </div>
   );
 }
