@@ -239,7 +239,7 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
 
       <FreeReaderGuide open={mode === "free"} />
       <div className="notice">{mode === "server"
-        ? "Page images are sent securely to our AI provider (Anthropic) only to read the notes, and aren't shared with anyone else."
+        ? <>Page images are sent securely to our AI provider (Anthropic) only to read the notes, and aren't shared with anyone else. <a href="./privacy" target="_blank" rel="noopener">Privacy policy</a></>
         : "Your files stay on this device. Page images are sent to Claude only to read the notes, and nothing is shared with anyone else."}</div>
     </Modal>
   );
