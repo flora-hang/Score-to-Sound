@@ -92,6 +92,8 @@ All of these are in `wrangler.toml` under `[vars]`. Edit them on GitHub and comm
 | `PAGES_PER_SONG` | 6 | How many pages count as one song |
 | `MODEL_PRIMARY` | claude-sonnet-5-5 | Model for the first reading of each page |
 | `MODEL_RETRY` | claude-opus-5-5 | Model for the free retries (most careful) |
+| `EFFORT` | medium | How hard the AI thinks before writing (low, medium, high). Higher can be more accurate but costs more |
+| `MAX_OUTPUT_TOKENS` | 48000 | Most the AI may write per page, thinking included |
 | `PAGES_PER_HOUR` | 60 | Most pages one person can read per hour |
 | `TRIALS_PER_NETWORK_PER_DAY` | 20 | Free trials from one internet connection per day |
 | `EMAILS_PER_HOUR` | 5 | Sign-in emails per address per hour |

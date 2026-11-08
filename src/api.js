@@ -2,24 +2,42 @@
    returns null and the app falls back to the free reading route. */
 const base = (import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
 
-async function call(path, {method = "GET", body, headers = {}, signal} = {}){
-  const res = await fetch(base + path, {
-    method, signal, credentials: "include",
+const OFFLINE = {code: "network", message: "Couldn't reach the server. Check your connection and try again.", retryable: true};
+
+/** A signal that fires when `ms` pass or the caller's own signal fires, whichever is first. */
+function withTimeout(ms, outer){
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(new DOMException("timeout", "TimeoutError")), ms);
+  if(outer){ if(outer.aborted) ctl.abort(outer.reason); else outer.addEventListener("abort", () => ctl.abort(outer.reason), {once: true}); }
+  return {signal: ctl.signal, ctl, done: () => clearTimeout(t)};
+}
+
+async function call(path, {method = "GET", body, headers = {}, signal, timeout = 20000} = {}){
+  const tm = withTimeout(timeout, signal);
+  let res, data = null;
+  try{
+    res = await fetch(base + path, {
+    method, signal: tm.signal, credentials: "include",
     headers: {"x-requested-with": "fetch", ...(body && !(body instanceof Blob) ? {"content-type": "application/json"} : {}), ...headers},
     body: body instanceof Blob ? body : body ? JSON.stringify(body) : undefined,
-  });
-  const isJson = (res.headers.get("content-type") || "").includes("application/json");
-  const data = isJson ? await res.json() : null;
-  if(!res.ok) throw {status: res.status, ...(data && data.error ? data.error : {code: "network", message: "Couldn't reach the server. Check your connection and try again."})};
+    });
+    if((res.headers.get("content-type") || "").includes("application/json")) data = await res.json();
+  }catch(err){
+    if(signal && signal.aborted) throw {code: "cancelled"};
+    throw {...OFFLINE};                               // no answer at all (offline, timed out, DNS…)
+  }finally{ tm.done(); }
+  if(!res.ok) throw {status: res.status, retryable: res.status >= 500, ...(data && data.error ? data.error : {code: res.status >= 500 ? "server_error" : "network", message: res.status >= 500 ? "Something went wrong on our side. Please try again." : OFFLINE.message})};
   return data;
 }
 
 export async function getConfig(){
+  const tm = withTimeout(10000);
   try{
-    const res = await fetch(base + "/api/config", {credentials: "include"});
+    const res = await fetch(base + "/api/config", {credentials: "include", signal: tm.signal});
     if(!res.ok || !(res.headers.get("content-type") || "").includes("application/json")) return null;
     return await res.json();
   }catch(_){ return null; }
+  finally{ tm.done(); }
 }
 export const getMe = () => call("/api/me");
 export const sendSignInEmail = email => call("/api/auth/email", {method: "POST", body: {email}});
@@ -32,14 +50,28 @@ export const finishJob = jobId => call(`/api/jobs/${jobId}/finish`, {method: "PO
 
 /** Read one page with AI. Streams progress; resolves {status, text, bars, truncated} or throws {code, message, retryable}. */
 export async function readPageWithServer(jobId, pageNo, blob, {signal, onBars} = {}){
+  // If nothing at all arrives for this long, give up and offer Retry instead of spinning forever.
+  const IDLE_MS = 120000;
+  const ctl = new AbortController();
+  let idle;
+  const poke = () => { clearTimeout(idle); idle = setTimeout(() => ctl.abort(new DOMException("idle", "TimeoutError")), IDLE_MS); };
+  if(signal){ if(signal.aborted) ctl.abort(); else signal.addEventListener("abort", () => ctl.abort(signal.reason), {once: true}); }
+  poke();
+  try{ return await readStream(jobId, pageNo, blob, ctl.signal, signal, onBars, poke); }
+  finally{ clearTimeout(idle); }
+}
+
+async function readStream(jobId, pageNo, blob, sig, userSignal, onBars, poke){
+  const stopped = () => userSignal && userSignal.aborted;
   let res;
   try{
-    res = await fetch(`${base}/api/jobs/${jobId}/pages/${pageNo}`, {method: "POST", body: blob, signal, credentials: "include",
+    res = await fetch(`${base}/api/jobs/${jobId}/pages/${pageNo}`, {method: "POST", body: blob, signal: sig, credentials: "include",
       headers: {"x-requested-with": "fetch", "content-type": blob.type || "image/jpeg"}});
   }catch(err){
-    if(err && err.name === "AbortError") throw {code: "cancelled"};
-    throw {code: "network", message: "Couldn't reach the server. Check your connection and try again.", retryable: true};
+    if(stopped()) throw {code: "cancelled"};
+    throw {...OFFLINE};
   }
+  poke();
   if(!res.ok){
     const data = (res.headers.get("content-type") || "").includes("application/json") ? await res.json() : null;
     throw {retryable: res.status >= 500 || res.status === 409, ...(data && data.error ? data.error : {code: "server_error", message: "Reading this page failed."})};
@@ -50,6 +82,7 @@ export async function readPageWithServer(jobId, pageNo, blob, {signal, onBars} =
     for(;;){
       const {value, done} = await reader.read();
       if(done) break;
+      poke();
       buf += dec.decode(value, {stream: true});
       let i;
       while((i = buf.indexOf("\n")) >= 0){
@@ -62,7 +95,8 @@ export async function readPageWithServer(jobId, pageNo, blob, {signal, onBars} =
       }
     }
   }catch(err){
-    if(err && err.name === "AbortError") throw {code: "cancelled"};
+    if(stopped()) throw {code: "cancelled"};
+    if(sig.aborted) throw {code: "timeout", message: "No answer for two minutes. Press Retry; it won't use another song.", retryable: true};
     throw err && err.code ? err : {code: "network", message: "The connection dropped while reading. Press Retry.", retryable: true};
   }
   if(!result) throw {code: "network", message: "The connection dropped while reading. Press Retry.", retryable: true};

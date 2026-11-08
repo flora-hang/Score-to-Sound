@@ -10,7 +10,8 @@ export default function AppBar({title, composer, onOpen, onLibrary, onEdit, onSh
         <button className="btn primary" onClick={onOpen} title="Open a PDF, photos or MusicXML (O)"><Open /><span className="lbl">Open score</span></button>
         <button className="btn" onClick={onLibrary} title="Your saved scores (L)"><Library /><span className="lbl">Library</span></button>
         <button className="btn" onClick={onEdit} aria-pressed={editing} title={editing ? "Leave edit mode (E)" : "Edit the notes: drag, sharps and flats, lengths, lyrics (E)"}><Pencil /><span className="lbl">{editing ? "Editing" : "Edit notes"}</span></button>
-        {account && account.server && (u
+        {account && account.status === "checking" && <span className="btn acct-wait" aria-hidden="true" />}
+        {account && account.server && account.status !== "checking" && (u
           ? <button className="btn acct" onClick={onAccount} title={`${u.email} · ${n} song${n === 1 ? "" : "s"} left to read with AI`}>
               <span className="avatar" aria-hidden="true">{(u.name || u.email)[0].toUpperCase()}</span><span className="lbl">{n} song{n === 1 ? "" : "s"}</span></button>
           : <button className="btn" onClick={onAccount} title="Sign in to read scores with AI">Sign in</button>)}

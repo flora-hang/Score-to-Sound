@@ -72,7 +72,9 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
       // Server mode: say what it costs, then read when the person confirms.
       hash.current = await fingerprint(files);
       const songs = songsFor(pagesRef.current.length);
-      if(!account.user){ setGate({kind: "signin", songs}); return; }
+      const now = await account.whenReady();
+      if(now.status === "offline" && !now.user){ setError("Couldn't reach the server to check your account. Check your connection and try again."); return; }
+      if(!now.user){ setGate({kind: "signin", songs}); return; }
       const look = await lookupJob(hash.current, pagesRef.current.length).catch(() => null);
       setGate({kind: "confirm", songs, free: !!(look && look.readBefore)});
     }catch(err){ console.error(err); setError(err.message || "This file couldn't be opened."); setProgress(null); }
