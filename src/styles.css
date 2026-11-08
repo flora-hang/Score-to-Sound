@@ -263,6 +263,9 @@ kbd{font-family:var(--font-mono);font-size:12px;border:1px solid var(--line);bor
 /* ---------------- Account and AI reading */
 .avatar{width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:inline-grid;place-items:center;font-size:12px;font-weight:600;flex:none}
 .btn.acct{padding:0 10px 0 6px}
+.btn.acct-wait{width:78px;pointer-events:none;opacity:.45;animation:acctPulse 1.2s ease-in-out infinite alternate}
+@keyframes acctPulse{to{opacity:.2}}
+@media (prefers-reduced-motion:reduce){.btn.acct-wait{animation:none}}
 .signin{display:grid;gap:12px}
 .signin-intro{margin:0;font-size:14px}
 .signin-sent{margin:0}

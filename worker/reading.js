@@ -84,7 +84,7 @@ export async function readPage(request, env, ctx, user, jobId, pageNo){
     send({t: "start", page: pageNo, attempt: attempts + 1});
     let pending = "", last = 0;
     try{
-      const r = await readPageWithClaude(env, {model, image, mediaType, prompt, onText: d => {
+      const r = await readPageWithClaude(env, {model, image, mediaType, prompt, signal: AbortSignal.timeout(5 * 60e3), onText: d => {
         pending += d;
         if(Date.now() - last > 250){ send({t: "text", d: pending}); pending = ""; last = Date.now(); }
       }});
