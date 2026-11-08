@@ -42,5 +42,5 @@ export async function readPageWithClaude(env, {model, image, mediaType, prompt, 
       else if(ev.type === "error") throw {code: ev.error?.type === "overloaded_error" ? "upstream_busy" : "upstream_error", message: "The AI service had a problem. Please try again.", retryable: true};
     }
   }
-  return {text, inputTokens, outputTokens, truncated: stop === "max_tokens"};
+  return {text, inputTokens, outputTokens, stop, truncated: stop === "max_tokens"};
 }

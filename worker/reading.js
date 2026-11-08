@@ -94,7 +94,13 @@ export async function readPage(request, env, ctx, user, jobId, pageNo){
       const status = noMusic ? "nomusic" : bars ? "done" : "error";
       await env.DB.prepare("UPDATE job_pages SET status = ?, text = ?, model = ?, input_tokens = ?, output_tokens = ?, updated_at = ? WHERE job_id = ? AND page = ?")
         .bind(status, noMusic ? "" : text, model, r.inputTokens, r.outputTokens, now(), jobId, pageNo).run();
-      if(status === "error") send({t: "error", code: "empty", message: "No music could be read on this page. Press Retry to try again with our most careful reader.", retryable: attempts + 1 < MAX_ATTEMPTS});
+      if(status === "error"){
+        // Keep a note of why, so an empty reading can be explained later (Workers logs + the page row).
+        console.error("readPage empty", JSON.stringify({jobId, pageNo, model, stop: r.stop, outputTokens: r.outputTokens, start: text.slice(0, 200)}));
+        if(!text) await env.DB.prepare("UPDATE job_pages SET text = ? WHERE job_id = ? AND page = ?").bind(`[no reply; stop_reason=${r.stop || "none"}]`, jobId, pageNo).run();
+        if(r.stop === "refusal") send({t: "error", code: "declined", message: "The AI declined to read this page. Screenshots that include another app's player or adverts are more likely to be turned down. Try a clean scan or photo of just the page, one page at a time.", retryable: attempts + 1 < MAX_ATTEMPTS});
+        else send({t: "error", code: "empty", message: "No music could be read on this page. Press Retry to try again with our most careful reader. If it still fails, crop the photo to one page with nothing around it.", retryable: attempts + 1 < MAX_ATTEMPTS});
+      }
       else send({t: "done", status, text: noMusic ? "" : text, bars, truncated: r.truncated});
     }catch(err){
       // A busy or failed service doesn't use up one of the page's tries.
