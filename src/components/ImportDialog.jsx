@@ -3,7 +3,9 @@ import Modal from "./Modal.jsx";
 import { FileIcon } from "./Icons.jsx";
 import FreeReaderGuide from "./FreeReaderGuide.jsx";
 import { SignInForm, GetMoreSongs } from "./AccountDialog.jsx";
-import { isImageFile, isPdf, isMusicXml, readMusicXmlFile, pdfToPages, imagesToPages, MAX_PAGES,
+import PagePrep from "./PagePrep.jsx";
+import { decodeImage, analyse, rotated, cutPages } from "../engine/prep.js";
+import { isImageFile, isPdf, isMusicXml, readMusicXmlFile, pdfToPages, MAX_PAGES,
   buildPrompt, headerContext, transcribePage, mergePages, SAMPLE_ERR, STOP_CODES } from "../engine/reader.js";
 import { createJob, finishJob, lookupJob, readPageWithServer, fingerprint } from "../api.js";
 
@@ -25,6 +27,10 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
   const [running, setRunning] = useState(false);
   const [over, setOver] = useState(false);
   const [gate, setGate] = useState(null);          // server mode before reading: {kind: "signin"|"confirm"|"nocredits", songs}
+  const [sheets, setSheets] = useState([]);        // photos/screenshots waiting on the "Check your pages" step
+  const [prepBusy, setPrepBusy] = useState(false);
+  const sheetsRef = useRef([]);
+  const setSheetList = list => { sheetsRef.current = list; setSheets(list); };
   const pagesRef = useRef([]), ctl = useRef(null), fileName = useRef(""), hash = useRef(null), job = useRef(null);
 
   const sync = () => setPages(pagesRef.current.map(p => ({...p})));
@@ -32,10 +38,12 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
   useEffect(() => () => {
     if(ctl.current) ctl.current.abort();
     pagesRef.current.forEach(p => URL.revokeObjectURL(p.url));
+    dropSheets(sheetsRef.current);
     if(job.current && !job.current.finished) finishJob(job.current.id).then(r => account.setCredits(r.credits)).catch(() => {});
   }, []);  // eslint-disable-line
 
   const reset = () => {
+    dropSheets(sheetsRef.current); setSheetList([]);
     pagesRef.current.forEach(p => URL.revokeObjectURL(p.url)); pagesRef.current = []; sync();
     setProgress(null); setError(""); setGate(null); job.current = null; hash.current = null;
   };
@@ -60,17 +68,68 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
       if(mode === "claude" && !(await claudeReady())) return;
       setProgress({reading: "Preparing pages…"});
       if(images){
-        const {failed, skipped} = await imagesToPages(files, addPage);
+        // Photos and screenshots go to the "Check your pages" step first; reading continues from usePreparedPages().
+        const sorted = files.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: "base"}));
+        const failed = [], list = [];
+        for(const f of sorted.slice(0, MAX_PAGES)){
+          const orig = await decodeImage(f);
+          if(!orig || !(orig.width || orig.naturalWidth)){ failed.push(f.name); continue; }
+          list.push(await makeSheet(f.name, orig, orig, 0, URL.createObjectURL(f)));
+        }
         if(failed.length) setError(`Couldn't open ${failed.join(", ")}. This browser can't read that image type; save it as JPG or PNG and try again.`);
-        if(skipped) setProgress({note: `Only the first ${MAX_PAGES} images will be read.`}); else setProgress(null);
-      } else {
-        const {total, read} = await pdfToPages(files[0], addPage);
-        setProgress(total > read ? {note: `Only the first ${read} pages will be read.`} : null);
+        setProgress(files.length > MAX_PAGES ? {note: `Only the first ${MAX_PAGES} images will be read.`} : null);
+        setSheetList(list);
+        return;
       }
+      const {total, read} = await pdfToPages(files[0], addPage);
+      setProgress(total > read ? {note: `Only the first ${read} pages will be read.`} : null);
+      hash.current = await fingerprint(files);
+      await afterPages();
+    }catch(err){ console.error(err); setError(err.message || "This file couldn't be opened."); setProgress(null); }
+  }
+
+  const nextId = useRef(1);
+  async function makeSheet(name, orig, src, turns, url){
+    const {w, h} = {w: src.width || src.naturalWidth, h: src.height || src.naturalHeight};
+    const a = analyse(src);
+    return {id: nextId.current++, name, orig, src, turns, url, w, h, crop: a.crop, split: a.split, notes: a.notes, warnings: a.warnings, auto: {crop: a.crop, split: a.split}};
+  }
+  function dropSheets(list){ list.forEach(s => { URL.revokeObjectURL(s.url); if(s.orig && s.orig.close) s.orig.close(); }); }
+  const changeSheet = (id, c) => setSheetList(sheetsRef.current.map(s => s.id === id ? {...s, ...c} : s));
+  const resetSheet = id => setSheetList(sheetsRef.current.map(s => s.id === id ? {...s, crop: s.auto.crop, split: s.auto.split} : s));
+  const removeSheet = id => { const s = sheetsRef.current.find(x => x.id === id); if(s) dropSheets([s]); setSheetList(sheetsRef.current.filter(x => x.id !== id)); };
+  async function rotateSheet(id){
+    const s = sheetsRef.current.find(x => x.id === id); if(!s || s.turning) return;
+    changeSheet(id, {turning: true});
+    await new Promise(r => setTimeout(r, 30));   // let "Turning…" show before the heavy work
+    const turns = (s.turns + 1) % 4, src = turns ? rotated(s.orig, turns) : s.orig;
+    const blob = await new Promise(r => (src.toBlob ? src : rotated(s.orig, 0)).toBlob(r, "image/jpeg", .85));
+    URL.revokeObjectURL(s.url);
+    const next = await makeSheet(s.name, s.orig, src, turns, URL.createObjectURL(blob));
+    setSheetList(sheetsRef.current.map(x => x.id === id ? {...next, id} : x));
+  }
+
+  /** "Use these pages": cut the chosen areas out and carry on as if these were the pages chosen. */
+  async function usePreparedPages(){
+    setPrepBusy(true); setError("");
+    try{
+      for(const s of sheetsRef.current){
+        const blobs = await cutPages(s.src, s.crop, s.split);
+        blobs.forEach((blob, k) => { if(pagesRef.current.length < MAX_PAGES) addPage({blob, label: blobs.length > 1 ? `${s.name} (${k ? "right" : "left"})` : s.name}); });
+      }
+      dropSheets(sheetsRef.current); setSheetList([]);
+      // The fingerprint is of the pages as prepared, so a different crop counts as a different reading.
+      hash.current = await fingerprint(pagesRef.current.map((p, i) => new File([p.blob], String(i).padStart(3, "0"))));
+      await afterPages();
+    }catch(err){ console.error(err); setError(err.message || "These images couldn't be prepared."); }
+    finally{ setPrepBusy(false); }
+  }
+
+  /** Pages are ready: read straight away (inside Claude), or say what it costs (server). */
+  async function afterPages(){
+    try{
       if(!pagesRef.current.length) return;
       if(mode === "claude"){ await run(); return; }
-      // Server mode: say what it costs, then read when the person confirms.
-      hash.current = await fingerprint(files);
       const songs = songsFor(pagesRef.current.length);
       const now = await account.whenReady();
       if(now.status === "offline" && !now.user){ setError("Couldn't reach the server to check your account. Check your connection and try again."); return; }
@@ -183,7 +242,20 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
           onChange={e => { handleFiles(e.target.files); e.target.value = ""; }} />
       </label>
 
-      {mode === "server" && !pages.length && (
+      {mode !== "free" && !pages.length && !sheets.length && (
+        <ul className="tips" aria-label="Tips for photos">
+          <li><b>One page per photo,</b> flat and well lit, with the whole page in the frame.</li>
+          <li><b>Screenshots:</b> zoom in so the notes are big. You can trim off the player next.</li>
+          <li><b>PDFs</b> work best of all.</li>
+        </ul>
+      )}
+
+      {sheets.length > 0 && !pages.length && (
+        <PagePrep sheets={sheets} busy={prepBusy} onChange={changeSheet} onRotate={rotateSheet} onRemove={removeSheet}
+          onReset={resetSheet} onDone={usePreparedPages} songsFor={mode === "server" ? songsFor : null} />
+      )}
+
+      {mode === "server" && !pages.length && !sheets.length && (
         <div className="ai-banner">
           <b>AI reading</b>
           <span>{account.user ? `You have ${plural(credits, "song")} to read with AI.` : `Sign in and your first ${account.config.trialSongs === 1 ? "song is" : plural(account.config.trialSongs, "song") + " are"} free.`}</span>
