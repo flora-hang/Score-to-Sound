@@ -51,33 +51,6 @@ export async function pdfToPages(file, onPage){
   return {total: pdf.numPages, read: N};
 }
 
-async function decodeImage(file){
-  try{ return await createImageBitmap(file, {imageOrientation:"from-image"}); }catch(_){}
-  const url = URL.createObjectURL(file);
-  try{ return await new Promise((ok, bad) => { const im = new Image(); im.onload = () => ok(im); im.onerror = bad; im.src = url; }); }
-  catch(_){ return null; }
-  finally{ setTimeout(() => URL.revokeObjectURL(url), 1000); }
-}
-
-/** Photos/scans -> upright JPEG blobs, sorted by file name with numbers in order (2 before 10). */
-export async function imagesToPages(files, onPage){
-  const sorted = [...files].sort((a,b) => a.name.localeCompare(b.name, undefined, {numeric:true, sensitivity:"base"}));
-  const failed = [];
-  for(const f of sorted.slice(0, MAX_PAGES)){
-    const bmp = await decodeImage(f);
-    const w = bmp && (bmp.width || bmp.naturalWidth), h = bmp && (bmp.height || bmp.naturalHeight);
-    if(!bmp || !w || !h){ failed.push(f.name); continue; }
-    const scale = Math.min(1, 2000 / Math.max(w, h * .78));
-    const c = document.createElement("canvas"); c.width = Math.round(w*scale); c.height = Math.round(h*scale);
-    const cx = c.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0,0,c.width,c.height);
-    cx.drawImage(bmp, 0, 0, c.width, c.height);
-    if(bmp.close) bmp.close();
-    onPage({blob: await canvasToJpeg(c), label: f.name});
-  }
-  return {failed, skipped: Math.max(0, files.length - MAX_PAGES)};
-}
-
-
 /** Ask Claude to read one page. Resolves {text, bars, truncated} or {noMusic:true}; rejects with the sample error. */
 export async function transcribePage(sample, blob, prompt, {signal, onBars}){
   const res = await sample(prompt, {images:[blob], modelTier:"complex", signal, onText: ({text}) => onBars && onBars(countBars(text))});

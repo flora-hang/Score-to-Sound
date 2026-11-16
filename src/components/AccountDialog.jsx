@@ -77,7 +77,7 @@ export default function AccountDialog({account, onClose}){
           </div>
           <p className="fine">One song is a score of up to {config ? config.pagesPerSong : 6} pages. Opening the same file again is free, and if a score can't be read at all, you get the song back.</p>
           <GetMoreSongs config={config} />
-          <div style={{display: "flex", justifyContent: "flex-end", marginTop: 14}}><button className="btn ghost" onClick={async () => { await signOut(); onClose(); }}>Sign out</button></div>
+          <div style={{display: "flex", justifyContent: "flex-end", marginTop: 14}}><button className="btn ghost" onClick={async () => { if(await signOut()) onClose(); }}>Sign out</button></div>
         </div>
       ) : (
         <SignInForm config={config} intro={`Sign in to read scores with AI. Your first ${trial === 1 ? "song is" : songs(trial) + " are"} free.`} />
