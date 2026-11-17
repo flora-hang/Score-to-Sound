@@ -182,6 +182,10 @@ export default function App(){
     try{ localStorage.setItem(lastKey(owner), JSON.stringify({src: doc.src, id: doc.id, settings: {transpose, tempoF, mix, myPart}})); }catch(_){}
   }, [doc, transpose, tempoF, mix, myPart, owner, account.status]);
 
+  // "Open the example" remembers where you came from, so you can go back. Your own score stays saved
+  // on this device meanwhile (the example is never saved over it).
+  const [backTo, setBackTo] = useState(null);
+
   // Signing out (here or in another tab) goes back to guest mode: the example score, nothing of the last person's.
   // Signing in brings back the score that person last had open on this device.
   const prevOwner = useRef(null);
@@ -193,7 +197,7 @@ export default function App(){
       if(was === null && now !== "guest" && docRef.current.demo){ const mine = readLast(now); if(mine) openScore(mine.src, {id: mine.id, settings: mine.settings}); }
       return;
     }
-    setEditing(false); setSel(null);
+    setEditing(false); setSel(null); setBackTo(null);
     setDialog(d => (d === "text" || d === "library") ? null : d);
     const mine = now !== "guest" ? readLast(now) : null;
     if(mine) openScore(mine.src, {id: mine.id, settings: mine.settings});
@@ -336,7 +340,8 @@ export default function App(){
       <div className="work">
         <ScoreView view={view} transpose={transpose} zoom={zoom} lyricsAbove={lyricsAbove} hiddenLines={hiddenLines}
           clock={clock} playing={playing} cursor={cursor} follow={follow} mix={mix} tempoF={tempoF} onSeek={seek}
-          isDemo={doc.demo} onExample={() => { openScore(DEMO, {demo: true}); toast("Opened the example score"); }} warnCount={doc.warns.length} onReview={() => setDialog("text")} soundState={soundState}
+          isDemo={doc.demo} onExample={() => { setBackTo(doc.score.title || "your score"); openScore(DEMO, {demo: true}); }}
+          backTo={doc.demo ? backTo : null} onBack={() => { const mine = readLast(owner); setBackTo(null); if(mine) openScore(mine.src, {id: mine.id, settings: mine.settings}); }} warnCount={doc.warns.length} onReview={() => setDialog("text")} soundState={soundState}
           editing={editing} selection={selInfo ? {addr: selInfo.addr, pi: selInfo.pi} : null} onSelect={selectNote} onMovePitch={movePitch}
           onPreview={m => player.preview(m)}
           toolbar={<EditToolbar sel={selInfo} ops={ops} canUndo={history.current.past.length > 0} canRedo={history.current.future.length > 0}
