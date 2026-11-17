@@ -336,7 +336,7 @@ export default function App(){
       <div className="work">
         <ScoreView view={view} transpose={transpose} zoom={zoom} lyricsAbove={lyricsAbove} hiddenLines={hiddenLines}
           clock={clock} playing={playing} cursor={cursor} follow={follow} mix={mix} tempoF={tempoF} onSeek={seek}
-          isDemo={doc.demo} warnCount={doc.warns.length} onReview={() => setDialog("text")} soundState={soundState}
+          isDemo={doc.demo} onExample={() => { openScore(DEMO, {demo: true}); toast("Opened the example score"); }} warnCount={doc.warns.length} onReview={() => setDialog("text")} soundState={soundState}
           editing={editing} selection={selInfo ? {addr: selInfo.addr, pi: selInfo.pi} : null} onSelect={selectNote} onMovePitch={movePitch}
           onPreview={m => player.preview(m)}
           toolbar={<EditToolbar sel={selInfo} ops={ops} canUndo={history.current.past.length > 0} canRedo={history.current.future.length > 0}
