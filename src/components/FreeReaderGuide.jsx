@@ -9,7 +9,7 @@ export default function FreeReaderGuide({open = false}){
         <li>Export the result as MusicXML (<code>.mxl</code> or <code>.musicxml</code>).</li>
         <li>Open that file here with <b>Open score</b>. Fix any wrong notes in <b>Edit notes</b>.</li>
       </ol>
-      <p className="fine">The free route doesn't read lyrics, phone photos or numbered (jianpu) notation as well as AI reading does.</p>
+      <p className="fine">The free route doesn't read lyrics or phone photos as well as AI reading does.</p>
     </details>
   );
 }

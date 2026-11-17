@@ -236,7 +236,7 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
         <FileIcon />
         <b>{mode === "free" ? "Drop a MusicXML file here, or " : "Drop a PDF or photos of the score here, or "}<u>choose files</u></b>
         <p>{mode === "free" ? "MusicXML from MuseScore, Finale, Sibelius, Dorico or Audiveris opens exactly as written."
-          : "Staff notation or numbered (jianpu) notation, with lyrics and choir parts. AI reads each page and writes out the notes."}</p>
+          : "Staff notation, with lyrics and choir parts. AI reads each page and writes out the notes."}</p>
         <input type="file" id="fileIn" multiple className="sr" disabled={running}
           accept=".pdf,.musicxml,.xml,.mxl,application/pdf,image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.heic,.heif,.tif,.tiff,.avif"
           onChange={e => { handleFiles(e.target.files); e.target.value = ""; }} />
@@ -294,7 +294,7 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
       {gate && gate.kind === "nocredits" && (
         <div className="gate">
           <p><b>You're out of songs.</b> This score needs {plural(gate.songs, "song")} and you have {gate.have ?? credits}.</p>
-          <GetMoreSongs config={account.config} />
+          <GetMoreSongs account={account} note="After paying you'll come back here. Open this score again to read it." />
         </div>
       )}
 

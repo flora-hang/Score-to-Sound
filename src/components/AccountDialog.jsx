@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Modal from "./Modal.jsx";
-import { sendSignInEmail, googleSignInUrl } from "../api.js";
+import { sendSignInEmail, googleSignInUrl, startCheckout, openBillingPortal } from "../api.js";
 
 const songs = n => `${n} song${n === 1 ? "" : "s"}`;
 
@@ -47,16 +47,62 @@ export function SignInForm({config, intro}){
   );
 }
 
-/** Upgrade options. Payments come in stage two. */
-export function GetMoreSongs({config}){
+const ZERO_DECIMAL = new Set(["jpy", "krw", "vnd", "clp", "isk", "huf"]);
+export function money(amount, currency){
+  const v = ZERO_DECIMAL.has(currency) ? amount : amount / 100;
+  try{ return new Intl.NumberFormat(undefined, {style: "currency", currency: currency.toUpperCase()}).format(v); }
+  catch(_){ return `${v} ${currency.toUpperCase()}`; }
+}
+const day = ms => new Date(ms).toLocaleDateString(undefined, {month: "long", day: "numeric"});
+
+/** Buy a song pack, start the monthly plan, or manage it. Payment happens on Stripe's own page. */
+export function GetMoreSongs({account, note}){
+  const {config, user} = account;
+  const prices = config && config.prices;
+  const [busy, setBusy] = useState(null), [err, setErr] = useState("");
+  async function go(what){
+    setBusy(what); setErr("");
+    try{
+      const {url} = what === "portal" ? await openBillingPortal() : await startCheckout(what);
+      window.location.assign(url);                     // Stripe's page; it sends people back here afterwards
+    }catch(e){ setErr(e.message || "Couldn't open the payment page. Please try again."); setBusy(null); }
+  }
+  if(!(config && config.payments && prices)) return (
+    <div className="getmore">
+      <h4>Get more songs</h4>
+      <p className="fine">Buying songs isn't available yet. Until then you can still open MusicXML files and use the free reader.</p>
+    </div>
+  );
+  const onPlan = user && user.plan === "monthly";
   return (
     <div className="getmore">
       <h4>Get more songs</h4>
+      {prices.test && <p className="test-mode">Test mode: no real money is charged. Use card 4242 4242 4242 4242.</p>}
       <div className="plans">
-        <div className="plan"><b>Song packs</b><span>Pay once, use any time. Songs never expire.</span></div>
-        <div className="plan"><b>Monthly plan</b><span>A set of songs every month, for regular practice.</span></div>
+        {prices.pack && (
+          <div className="plan">
+            <b>{prices.pack.songs} songs</b>
+            <span className="price">{money(prices.pack.amount, prices.pack.currency)}</span>
+            <span>Pay once. Songs never expire.</span>
+            <button className="btn primary" disabled={!!busy || !user} onClick={() => go("pack")}>{busy === "pack" ? "Opening…" : "Buy"}</button>
+          </div>
+        )}
+        {prices.monthly && (
+          <div className="plan">
+            <b>Monthly plan</b>
+            <span className="price">{money(prices.monthly.amount, prices.monthly.currency)}<small> / month</small></span>
+            <span>{prices.monthly.songs} songs every month. Cancel any time.</span>
+            {onPlan
+              ? <button className="btn" disabled={!!busy} onClick={() => go("portal")}>{busy === "portal" ? "Opening…" : "Manage plan"}</button>
+              : <button className="btn primary" disabled={!!busy || !user} onClick={() => go("monthly")}>{busy === "monthly" ? "Opening…" : "Subscribe"}</button>}
+          </div>
+        )}
       </div>
-      {!(config && config.payments) && <p className="fine">Paid plans are coming soon. Until then you can still open MusicXML files and use the free reader.</p>}
+      {onPlan && user.renews && <p className="fine">Your plan renews on {day(user.renews)}, with a fresh {prices.monthly ? prices.monthly.songs : ""} songs.</p>}
+      {user && user.customer && !onPlan && <p className="fine"><button className="linkish" disabled={!!busy} onClick={() => go("portal")}>Receipts and billing</button></p>}
+      {note && <p className="fine">{note}</p>}
+      <p className="fine">Payments are handled securely by Stripe. We never see your card details.</p>
+      {err && <div className="err-msg">{err}</div>}
     </div>
   );
 }
@@ -64,6 +110,18 @@ export function GetMoreSongs({config}){
 export default function AccountDialog({account, onClose}){
   const {config, user, credits, signOut} = account;
   const trial = config ? config.trialSongs : 1;
+  const [confirming, setConfirming] = useState(false), [leaving, setLeaving] = useState(false);
+  if(user && confirming) return (
+    <Modal title="Sign out?" width={420} onClose={() => setConfirming(false)}
+      footer={<>
+        <button className="btn" onClick={() => setConfirming(false)} disabled={leaving}>Stay signed in</button>
+        <button className="btn primary" autoFocus disabled={leaving}
+          onClick={async () => { setLeaving(true); const ok = await signOut(); setLeaving(false); if(ok) onClose(); }}>{leaving ? "Signing out…" : "Sign out"}</button>
+      </>}>
+      <p className="confirm-text">You'll be signed out of <b>{user.email}</b> on this device. The score you have open will close, and the example score will open instead.</p>
+      <p className="fine">Your songs stay in your account. Sign in again any time to use them.</p>
+    </Modal>
+  );
   return (
     <Modal title={user ? "Your account" : "Sign in"} width={480} onClose={onClose}>
       {user ? (
@@ -76,8 +134,8 @@ export default function AccountDialog({account, onClose}){
               {credits && credits.monthly > 0 && <small>{songs(credits.monthly)} this month · {songs(credits.pack)} that never expire</small>}</span>
           </div>
           <p className="fine">One song is a score of up to {config ? config.pagesPerSong : 6} pages. Opening the same file again is free, and if a score can't be read at all, you get the song back.</p>
-          <GetMoreSongs config={config} />
-          <div style={{display: "flex", justifyContent: "flex-end", marginTop: 14}}><button className="btn ghost" onClick={async () => { if(await signOut()) onClose(); }}>Sign out</button></div>
+          <GetMoreSongs account={account} />
+          <div style={{display: "flex", justifyContent: "flex-end", marginTop: 14}}><button className="btn ghost" onClick={() => setConfirming(true)}>Sign out</button></div>
         </div>
       ) : (
         <SignInForm config={config} intro={`Sign in to read scores with AI. Your first ${trial === 1 ? "song is" : songs(trial) + " are"} free.`} />

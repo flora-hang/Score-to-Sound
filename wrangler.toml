@@ -33,6 +33,9 @@ MAX_OUTPUT_TOKENS = "48000"
 EFFORT = "medium"
 # Who sign-in emails come from (must be a domain you verified in Resend).
 EMAIL_FROM = "Personal Accompanist <signin@scoretosound.com>"
+# Payments (Stripe). The prices themselves are set in Stripe; these say how many songs each one gives.
+PACK_SONGS = "5"
+MONTHLY_SONGS = "10"
 # Abuse limits
 PAGES_PER_HOUR = "60"
 EMAILS_PER_HOUR = "5"

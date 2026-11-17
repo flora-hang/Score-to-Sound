@@ -57,10 +57,26 @@ export default function useAccount(toast){
       const q = new URLSearchParams(location.search);
       if(q.has("signedin") && me && me.user) toast(`Signed in as ${me.user.email}`);
       if(q.has("signin_error")) toast(SIGNIN_ERRORS[q.get("signin_error")] || SIGNIN_ERRORS.link);
-      if(q.has("signedin") || q.has("signin_error")){ q.delete("signedin"); q.delete("signin_error"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash); }
+      if(q.has("purchase")){
+        if(q.get("purchase") === "done") waitForPurchase(me);
+        else toast("Payment cancelled. Nothing was charged.");
+      }
+      if(q.has("signedin") || q.has("signin_error") || q.has("purchase")){ q.delete("signedin"); q.delete("signin_error"); q.delete("purchase"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash); }
     })();
     return () => { alive = false; };
   }, []);  // eslint-disable-line
+
+  // Back from Stripe: the songs arrive when Stripe confirms the payment, usually within seconds.
+  async function waitForPurchase(before){
+    toast("Payment received. Adding your songs…");
+    const had = before && before.user ? JSON.stringify([before.credits && before.credits.total, before.user.plan, before.user.renews]) : null;
+    for(let i = 0; i < 15; i++){
+      await new Promise(r => setTimeout(r, 2000));
+      const me = await refresh();
+      if(me && me.user && JSON.stringify([me.credits && me.credits.total, me.user.plan, me.user.renews]) !== had){ toast(`Thank you! You now have ${me.credits.total} song${me.credits.total === 1 ? "" : "s"}.`); return; }
+    }
+    toast("Your payment went through. Your songs will appear in a minute or two.");
+  }
 
   // Coming back to the tab re-checks, so signing out (or buying songs) in another tab shows up here.
   useEffect(() => {

@@ -43,6 +43,8 @@ export const getMe = () => call("/api/me");
 export const sendSignInEmail = email => call("/api/auth/email", {method: "POST", body: {email}});
 export const signOut = () => call("/api/auth/logout", {method: "POST"});
 export const googleSignInUrl = () => base + "/api/auth/google";
+export const startCheckout = kind => call("/api/billing/checkout", {method: "POST", body: {kind}});
+export const openBillingPortal = () => call("/api/billing/portal", {method: "POST"});
 
 export const createJob = (fileHash, fileName, pages) => call("/api/jobs", {method: "POST", body: {fileHash, fileName, pages}});
 export const lookupJob = (fileHash, pages) => call(`/api/jobs/lookup?hash=${fileHash}&pages=${pages}`);

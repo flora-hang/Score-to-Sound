@@ -4,6 +4,7 @@ import { json, ApiError, int } from "./util.js";
 import { getUser, requireUser, logout, sendEmailLink, emailLinkPage, verifyEmailLink, googleStart, googleCallback } from "./auth.js";
 import { creditsOf } from "./credits.js";
 import { createJob, readPage, finishJob, lookupJob } from "./reading.js";
+import { paymentsOn, prices, checkout, portal, webhook } from "./billing.js";
 
 export default {
   async fetch(request, env, ctx){
@@ -12,17 +13,17 @@ export default {
       // Requests that change things must come from our own app (blocks cross-site form tricks).
       const fromApp = request.headers.get("x-requested-with") === "fetch";
       const post = method === "POST";
-      if(post && !fromApp && path !== "/api/auth/email/verify") throw new ApiError(403, "forbidden", "Forbidden.");
+      if(post && !fromApp && path !== "/api/auth/email/verify" && path !== "/api/stripe/webhook") throw new ApiError(403, "forbidden", "Forbidden.");
 
       if(path === "/api/config" && method === "GET") return json({
         ai: !!env.ANTHROPIC_API_KEY, email: !!env.RESEND_API_KEY || env.DEV_MODE === "1", google: !!env.GOOGLE_CLIENT_ID,
         trialSongs: int(env.TRIAL_SONGS, 1), pagesPerSong: int(env.PAGES_PER_SONG, 6), maxPages: int(env.MAX_PAGES, 40),
-        payments: false,
+        payments: paymentsOn(env), prices: await prices(env),
       });
       if(path === "/api/me" && method === "GET"){
         const u = await getUser(request, env);
         if(!u) return json({user: null});
-        return json({user: {email: u.email, name: u.name, plan: u.plan}, credits: creditsOf(u)});
+        return json({user: {email: u.email, name: u.name, plan: u.plan, renews: u.plan_renews_at, customer: !!u.stripe_customer_id}, credits: creditsOf(u)});
       }
       if(path === "/api/auth/email" && post) return await sendEmailLink(request, env);
       if(path === "/api/auth/email/verify" && method === "GET") return await emailLinkPage(request, env);
@@ -30,6 +31,10 @@ export default {
       if(path === "/api/auth/google" && method === "GET") return await googleStart(request, env);
       if(path === "/api/auth/google/callback" && method === "GET") return await googleCallback(request, env);
       if(path === "/api/auth/logout" && post) return await logout(request, env);
+
+      if(path === "/api/billing/checkout" && post) return await checkout(request, env, await requireUser(request, env));
+      if(path === "/api/billing/portal" && post) return await portal(request, env, await requireUser(request, env));
+      if(path === "/api/stripe/webhook" && post) return await webhook(request, env);
 
       if(path === "/api/jobs" && post){
         if(!env.ANTHROPIC_API_KEY) throw new ApiError(503, "ai_unavailable", "AI reading isn't set up yet.");

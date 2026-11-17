@@ -334,3 +334,12 @@ kbd{font-family:var(--font-mono);font-size:12px;border:1px solid var(--line);bor
 .crop-split i{position:absolute;top:8px;font-style:normal;font-size:11px;font-weight:600;background:var(--accent);color:var(--accent-ink);border-radius:9px;padding:1px 6px}
 .crop-split i:first-child{right:16px}.crop-split i:last-child{left:16px}
 @media (max-width:640px){.prep-sheet{grid-template-columns:1fr}.crop img{max-height:300px}}
+
+/* Buying songs, signing out */
+.plans .plan{display:flex;flex-direction:column;gap:4px}
+.plans .plan .price{font-size:20px;font-weight:600;color:var(--ink)}
+.plans .plan .price small{font-size:12px;font-weight:400;color:var(--muted)}
+.plans .plan .btn{margin-top:6px;align-self:flex-start}
+.test-mode{margin:6px 0;padding:6px 10px;border-radius:6px;font-size:12.5px;background:var(--warn-soft, rgba(214,150,30,.14));border-left:3px solid var(--warn, #c98a12)}
+.linkish{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;cursor:pointer;font:inherit}
+.confirm-text{margin:0 0 8px;line-height:1.5}
