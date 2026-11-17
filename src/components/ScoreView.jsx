@@ -10,7 +10,7 @@ import { stepMove, pitchName } from "../engine/edit.js";
  * `host`, which React leaves empty. The playhead is moved directly by the clock subscription.
  */
 export default function ScoreView({view, transpose, zoom, lyricsAbove, hiddenLines, clock, playing, cursor, follow, mix, tempoF,
-  onSeek, isDemo, onExample, warnCount, onReview, soundState, editing, selection, onSelect, onMovePitch, onPreview, toolbar}){
+  onSeek, isDemo, onExample, backTo, onBack, warnCount, onReview, soundState, editing, selection, onSelect, onMovePitch, onPreview, toolbar}){
   const scroller = useRef(null), host = useRef(null), ctrl = useRef(null), lastBeat = useRef(cursor);
   const systemsRef = useRef([]), ring = useRef(null), tag = useRef(null), drag = useRef(null);
   const editRef = useRef(editing); editRef.current = editing;
@@ -129,6 +129,7 @@ export default function ScoreView({view, transpose, zoom, lyricsAbove, hiddenLin
     <section className={`desk${editing ? " editing" : ""}`} aria-label="Score">
       {editing ? toolbar : <div className="desk-tools">
         <div className="hint"><Pointer /><span>Click any note to start from there, before or during playback.</span></div>
+        {isDemo && backTo && <button className="pill link" onClick={onBack} title="Go back to the score you had open">← Back to {backTo.length > 32 ? backTo.slice(0, 30) + "…" : backTo}</button>}
         {isDemo ? <span className="pill">Example score</span>
           : onExample && <button className="pill link" onClick={onExample} title="Open the example score: the Habanera from Carmen">Open the example</button>}
         {warnCount > 0 && <button className="pill warn" onClick={onReview} title="Open the note editor to review">{warnCount} thing{warnCount === 1 ? "" : "s"} to check</button>}
