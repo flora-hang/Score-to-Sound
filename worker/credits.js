@@ -5,7 +5,7 @@ import { now, fail } from "./util.js";
 
 export const creditsOf = u => ({monthly: u.monthly_songs, pack: u.pack_songs, total: u.monthly_songs + u.pack_songs});
 
-async function ledger(env, userId, delta, bucket, reason, ref){
+export async function ledger(env, userId, delta, bucket, reason, ref){
   await env.DB.prepare("INSERT INTO credit_ledger (user_id, delta, bucket, reason, ref, created_at) VALUES (?, ?, ?, ?, ?, ?)")
     .bind(userId, delta, bucket, reason, ref || null, now()).run();
 }

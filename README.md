@@ -6,7 +6,7 @@ Built with **React 18** and **Vite**, with VexFlow for music engraving and Tone.
 
 ## Features
 
-- **Open any score:** MusicXML (`.musicxml`, `.xml`, `.mxl`) from MuseScore, Finale, Sibelius or Dorico; PDFs and photos (JPG, PNG, WebP, HEIC…) in staff or numbered (jianpu) notation, read by Claude (see *Running it*).
+- **Open any score:** MusicXML (`.musicxml`, `.xml`, `.mxl`) from MuseScore, Finale, Sibelius or Dorico; PDFs and photos (JPG, PNG, WebP, HEIC…) in staff notation, read by Claude (see *Running it*).
 - **Choose what plays:** the singer's line, the accompaniment, or both, each with its own volume.
 - **Your key and speed:** transpose by semitones (the written music changes key too); tempo from 25% to 200%.
 - **Follow along:** professional engraving with every verse and language of the lyrics stacked under the right notes; a moving playhead; notes and words light up as they play; page turns happen early so the next line is always visible.
@@ -70,7 +70,7 @@ src/
     ├── musicxml.js         MusicXML import (all lyric lines)
     ├── reader.js           PDF/photo pages → images; MusicXML files
     ├── prompt.js           The page-reading instructions (shared with the server)
-    └── demo.js             Example score (Amazing Grace, public domain)
+    └── demo.js             Example score (Habanera from Carmen, public domain), made by scripts/habanera.py
 worker/                     Cloudflare Worker (the server)
 ├── index.js                Routes
 ├── auth.js                 Email-link and Google sign-in, sessions, free trial

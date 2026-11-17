@@ -5,3 +5,9 @@ RESEND_API_KEY=
 DEV_MODE=1
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+# Payments: use Stripe's TEST keys locally (sk_test_...). Run `stripe listen --forward-to localhost:8787/api/stripe/webhook`
+# and paste the whsec_... it prints. Price ids come from the test products you create in Stripe.
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PRICE_PACK=
+STRIPE_PRICE_MONTHLY=

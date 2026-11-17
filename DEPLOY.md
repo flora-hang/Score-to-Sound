@@ -4,11 +4,11 @@ This guide puts the app online on Cloudflare with:
 
 - **AI reading** of PDFs and photos through your own Claude API key (users never see the key)
 - **Sign-in** by email link or Google
-- **1 free song** for every new account, then song credits (payments come next)
+- **1 free song** for every new account, then **song packs and a monthly plan** paid through Stripe
 
 Everything except the AI itself runs on Cloudflare. Menu names on these websites change from time to time, so a button may be worded slightly differently from what's written here.
 
-You'll set up four accounts: **Anthropic** (the AI), **Cloudflare** (hosting and database), **Resend** (sign-in emails) and **Google Cloud** (the "Continue with Google" button). Do them in this order.
+You'll set up five accounts: **Anthropic** (the AI), **Cloudflare** (hosting and database), **Resend** (sign-in emails), **Google Cloud** (the "Continue with Google" button) and **Stripe** (payments). Do them in this order.
 
 ---
 
@@ -73,7 +73,43 @@ You can add the first one now and the others as you finish steps 3 and 4. Each f
 5. Copy the **Client ID** and **Client secret** into Cloudflare as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (step 2d).
 6. Back on the consent screen, set the publishing status to **In production**. While it says "Testing", only people you list as test users can sign in with Google.
 
-## 5. Try it
+## 5. Stripe: selling songs
+
+Start in Stripe's **test mode**: everything works the same, but no real money moves. Switch to live mode only when you're ready to sell.
+
+1. Sign up at [stripe.com](https://stripe.com). Make sure the **Test mode** switch (top right) is on.
+2. **Product catalog → Add product**, twice:
+   - **5 songs**: a **one-off** price, e.g. CA$4.99.
+   - **Monthly plan**: a **recurring, monthly** price, e.g. CA$8.99.
+   After saving each one, open its price and copy the **Price ID** (starts with `price_`).
+3. **Developers → API keys**: copy the **Secret key** (starts with `sk_test_`).
+4. **Developers → Webhooks → Add destination** (or "Add endpoint"):
+   - **Endpoint URL:** `https://scoretosound.com/api/stripe/webhook`
+   - **Events:** `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `invoice.paid`, `customer.subscription.updated`, `customer.subscription.deleted`
+   - Save, then copy the **Signing secret** (starts with `whsec_`).
+5. **Settings → Billing → Customer portal**: turn it on. This is the page where people see receipts, change their card or cancel the plan.
+6. In Cloudflare, add four more **Secrets** (step 2d):
+
+| Name | Value |
+|---|---|
+| `STRIPE_SECRET_KEY` | `sk_test_…` from step 3 |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_…` from step 4 |
+| `STRIPE_PRICE_PACK` | the 5-songs Price ID |
+| `STRIPE_PRICE_MONTHLY` | the monthly Price ID |
+
+7. In the database **Console**, run this once:
+
+```sql
+CREATE TABLE IF NOT EXISTS stripe_events (id TEXT PRIMARY KEY, type TEXT NOT NULL, created_at INTEGER NOT NULL);
+```
+
+8. **Test it:** open your account in the app, press **Buy**, and pay with card `4242 4242 4242 4242`, any future date and any 3 digits. You come back to the app and the songs appear within a few seconds. The app shows a yellow "Test mode" note while you use test keys.
+
+How many songs each purchase gives is set in `wrangler.toml` (`PACK_SONGS`, `MONTHLY_SONGS`). Keep them matching what your Stripe products say. Monthly songs are refilled at each renewal and don't carry over; pack songs never expire.
+
+**Going live:** in Stripe, finish **activating your account** (business details and a bank account for payouts). Then switch off test mode and repeat steps 2–4 in live mode (products, keys and the webhook are separate there). Replace the four Cloudflare secrets with the live values (`sk_live_…`, the new `whsec_…` and the live Price IDs).
+
+## 6. Try it
 
 1. Open your app's address, press **Sign in**, and sign in with email or Google.
 2. The top bar should show **1 song**.
@@ -123,6 +159,13 @@ SELECT COUNT(*) AS readings, SUM(songs_charged) AS songs FROM jobs WHERE status 
 SELECT model, COUNT(*) AS pages, SUM(input_tokens) AS input, SUM(output_tokens) AS output FROM job_pages GROUP BY model;
 ```
 
+## Testing without spending money
+
+- **Give yourself songs.** Run the "Giving someone songs by hand" SQL above with your own email. Each reading still costs a little on your Anthropic bill.
+- **Payments:** keep Stripe in test mode (card `4242 4242 4242 4242`) until everything works.
+- **The AI on its own:** in the Anthropic console, **Workbench** lets you try requests by hand, and **Usage** shows what each reading cost. Your API key is all the "developer access" you need.
+- **Everything on your own computer:** see "Running everything on your own computer" below. To test payments locally too, install the [Stripe CLI](https://docs.stripe.com/stripe-cli) and run `stripe listen --forward-to localhost:8787/api/stripe/webhook`; put the `whsec_…` it prints into `.dev.vars`.
+
 ## Before you launch publicly
 
 - **Privacy policy and terms:** say that page images are sent to Anthropic to be read, what you store (email, songs, the notes read from scores), and that scores are for personal practice of music the user has the right to use. Have a lawyer look them over.
@@ -134,7 +177,7 @@ SELECT model, COUNT(*) AS pages, SUM(input_tokens) AS input, SUM(output_tokens) 
 ```bash
 npm install
 cp dev.vars.example .dev.vars        # then put your Anthropic key in .dev.vars
-npm run db:migrate:local
+npm run db:migrate:local             # creates the tables in a local test database
 npm run dev:full                     # app + server at http://localhost:8787
 ```
 

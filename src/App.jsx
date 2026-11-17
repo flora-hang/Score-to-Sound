@@ -20,7 +20,23 @@ import EditNotesDialog from "./components/EditNotesDialog.jsx";
 import ShortcutsDialog from "./components/ShortcutsDialog.jsx";
 import EditToolbar from "./components/EditToolbar.jsx";
 
-const LAST_KEY = "pa:last";
+// The last score you had open is remembered per person on this device: a guest never sees
+// a signed-in person's score, and signing back in brings yours back.
+const LAST_KEY = "pa:last";                                   // older, unlabelled copies count as the guest's
+const ownerOf = user => {
+  if(!user) return "guest";
+  let h = 0x811c9dc5;                                         // FNV-1a, so the email itself isn't stored
+  for(const ch of user.email.toLowerCase()){ h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return "u" + h.toString(16);
+};
+const lastKey = owner => owner === "guest" ? LAST_KEY : `${LAST_KEY}:${owner}`;
+function readLast(owner){
+  try{
+    const last = JSON.parse(localStorage.getItem(lastKey(owner)) || "null");
+    if(last && last.src){ const {score, warns} = parseScore(last.src); if(score.measures.length) return {src: last.src, score, warns, id: last.id || null, demo: false, settings: last.settings || {}}; }
+  }catch(_){}
+  return null;
+}
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 function defaultMix(score, saved){
@@ -31,10 +47,8 @@ function defaultMix(score, saved){
 const firstVocal = score => (score.parts.find(p => p.role === "vocal") || {}).id || null;
 /** The score to show on load: the last one you had open, or the example. */
 function initialDoc(){
-  try{
-    const last = JSON.parse(localStorage.getItem(LAST_KEY) || "null");
-    if(last && last.src){ const {score, warns} = parseScore(last.src); if(score.measures.length) return {src: last.src, score, warns, id: last.id || null, demo: false, settings: last.settings || {}}; }
-  }catch(_){}
+  const last = readLast("guest");
+  if(last) return last;
   const {score, warns} = parseScore(DEMO);
   return {src: DEMO, score, warns, id: null, demo: true, settings: {}};
 }
@@ -161,11 +175,30 @@ export default function App(){
     h.past.push(docRef.current.src); replaceText(h.future.pop(), {record: false}); setHistVer(v => v + 1);
   }, [replaceText]);
 
-  // Remember the last score and its settings in this browser.
+  // Remember the last score and its settings in this browser, for whoever is signed in.
+  const owner = ownerOf(account.user);
   useEffect(() => {
-    if(doc.demo) return;
-    try{ localStorage.setItem(LAST_KEY, JSON.stringify({src: doc.src, id: doc.id, settings: {transpose, tempoF, mix, myPart}})); }catch(_){}
-  }, [doc, transpose, tempoF, mix, myPart]);
+    if(doc.demo || account.status === "checking") return;
+    try{ localStorage.setItem(lastKey(owner), JSON.stringify({src: doc.src, id: doc.id, settings: {transpose, tempoF, mix, myPart}})); }catch(_){}
+  }, [doc, transpose, tempoF, mix, myPart, owner, account.status]);
+
+  // Signing out (here or in another tab) goes back to guest mode: the example score, nothing of the last person's.
+  // Signing in brings back the score that person last had open on this device.
+  const prevOwner = useRef(null);
+  useEffect(() => {
+    if(account.status === "checking") return;
+    const was = prevOwner.current, now = owner;
+    prevOwner.current = now;
+    if(was === null || was === now) {
+      if(was === null && now !== "guest" && docRef.current.demo){ const mine = readLast(now); if(mine) openScore(mine.src, {id: mine.id, settings: mine.settings}); }
+      return;
+    }
+    setEditing(false); setSel(null);
+    setDialog(d => (d === "text" || d === "library") ? null : d);
+    const mine = now !== "guest" ? readLast(now) : null;
+    if(mine) openScore(mine.src, {id: mine.id, settings: mine.settings});
+    else openScore(DEMO, {demo: true});
+  }, [owner, account.status, openScore]);
 
   // Everything the toolbar needs to know about the selected note.
   const selInfo = useMemo(() => {
