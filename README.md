@@ -6,7 +6,7 @@ Built with **React 18** and **Vite**, with VexFlow for music engraving and Tone.
 
 ## Features
 
-- **Open any score:** MusicXML (`.musicxml`, `.xml`, `.mxl`) from MuseScore, Finale, Sibelius or Dorico; PDFs and photos (JPG, PNG, WebP, HEIC…) in staff notation, read by Claude (see *Running it*).
+- **Open any score:** MusicXML (`.musicxml`, `.xml`, `.mxl`) from MuseScore, Finale, Sibelius or Dorico; PDFs and photos (JPG, PNG, WebP, HEIC…) in staff notation: the notes read free by an optical music reader ([homr](https://github.com/liebharc/homr)), or notes and lyrics read by Claude (see *Running it*).
 - **Choose what plays:** the singer's line, the accompaniment, or both, each with its own volume.
 - **Your key and speed:** transpose by semitones (the written music changes key too); tempo from 25% to 200%.
 - **Follow along:** professional engraving with every verse and language of the lyrics stacked under the right notes; a moving playhead; notes and words light up as they play; page turns happen early so the next line is always visible.
@@ -26,7 +26,7 @@ npm run preview    # serve the production build
 
 **Publish to GitHub Pages:** push to `main`, then in the repo's Settings → Pages choose **Source: GitHub Actions**. The included workflow builds and deploys automatically.
 
-**AI reading of PDFs and photos** runs through a small server on Cloudflare (in `worker/`) that calls the Claude API with your key, with sign-in (email link or Google), one free song per new account, and song credits. See **[DEPLOY.md](DEPLOY.md)** for step-by-step setup. Without the server (for example on GitHub Pages) the app offers the free route instead: convert the PDF with [Audiveris](https://github.com/Audiveris/audiveris) and open the MusicXML.
+**AI reading of PDFs and photos** runs through a small server on Cloudflare (in `worker/`) that calls the Claude API with your key, with sign-in (email link or Google), one free song per new account, and song credits. **Free note reading** (no lyrics) runs homr in a Cloudflare Container (`omr/`, `worker/omr.js`). See **[DEPLOY.md](DEPLOY.md)** for step-by-step setup. Without the server (for example on GitHub Pages) the app offers the free route instead: convert the PDF with [Audiveris](https://github.com/Audiveris/audiveris) and open the MusicXML.
 
 ## How it's built
 
@@ -76,6 +76,7 @@ worker/                     Cloudflare Worker (the server)
 ├── auth.js                 Email-link and Google sign-in, sessions, free trial
 ├── credits.js              Song credits: monthly and never-expiring buckets, charging, refunds
 ├── reading.js              AI reading jobs: charge once per score, read pages, refund if nothing read
+├── omr.js                  Free note reading: passes page images to the homr container
 ├── claude.js               Streaming calls to the Claude Messages API
 └── util.js                 Helpers: JSON, cookies, hashing, rate limits
 migrations/0001_init.sql    Database tables (Cloudflare D1)

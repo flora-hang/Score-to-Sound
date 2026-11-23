@@ -109,7 +109,19 @@ How many songs each purchase gives is set in `wrangler.toml` (`PACK_SONGS`, `MON
 
 **Going live:** in Stripe, finish **activating your account** (business details and a bank account for payouts). Then switch off test mode and repeat steps 2–4 in live mode (products, keys and the webhook are separate there). Replace the four Cloudflare secrets with the live values (`sk_live_…`, the new `whsec_…` and the live Price IDs).
 
-## 6. Try it
+## 6. Free note reading (optional, needs Workers Paid)
+
+The free reader reads the notes (not the lyrics) of a PDF or photo without AI, using [homr](https://github.com/liebharc/homr). It runs in a **Cloudflare Container** next to the app: `omr/` holds its Dockerfile and a small web server, and `wrangler.toml` sets its size (2 vCPU, 6 GB), about 22 seconds a page.
+
+1. **Switch to Workers Paid first** (Workers & Pages → Plans, $5/month). Containers aren't available on the free plan, and a deploy with a container fails without it.
+2. Merge the change on GitHub. Cloudflare's build makes the container image (about 1 GB) and uploads it. The **first deploy takes several minutes**; later ones only upload what changed.
+3. Check it: `https://scoretosound.com/api/config` should show `"omr":true`. In the app, open a PDF and choose **Read notes free**. The first page after a quiet spell takes longer while a reader starts.
+
+Costs: with Workers Paid, roughly the first 500 pages a month are included; after that about 0.1¢ a page. Readers stop 3 minutes after the last page, and cost nothing while stopped.
+
+Settings in `wrangler.toml`: `OMR_PAGES_PER_HOUR` (free pages per internet connection per hour, default 60) and `OMR_INSTANCES` (readers to share pages across, default 3; `max_instances` must be at least this). To switch free reading off without removing it, add `OMR_ENABLED = "0"` under `[vars]`.
+
+## 7. Try it
 
 1. Open your app's address, press **Sign in**, and sign in with email or Google.
 2. The top bar should show **1 song**.
@@ -164,6 +176,7 @@ SELECT model, COUNT(*) AS pages, SUM(input_tokens) AS input, SUM(output_tokens) 
 - **Give yourself songs.** Run the "Giving someone songs by hand" SQL above with your own email. Each reading still costs a little on your Anthropic bill.
 - **Payments:** keep Stripe in test mode (card `4242 4242 4242 4242`) until everything works.
 - **The AI on its own:** in the Anthropic console, **Workbench** lets you try requests by hand, and **Usage** shows what each reading cost. Your API key is all the "developer access" you need.
+- **The free reader on its own computer:** with Docker installed, `docker build -t omr omr/ && docker run -p 8080:8080 omr`, then send it a page: `curl --data-binary @page.png -H "content-type: image/png" localhost:8080/read`.
 - **Everything on your own computer:** see "Running everything on your own computer" below. To test payments locally too, install the [Stripe CLI](https://docs.stripe.com/stripe-cli) and run `stripe listen --forward-to localhost:8787/api/stripe/webhook`; put the `whsec_…` it prints into `.dev.vars`.
 
 ## Before you launch publicly

@@ -345,3 +345,13 @@ kbd{font-family:var(--font-mono);font-size:12px;border:1px solid var(--line);bor
 .confirm-text{margin:0 0 8px;line-height:1.5}
 .pill.link{cursor:pointer;color:var(--accent);border-color:var(--accent)}
 .pill.link:hover{background:var(--accent-soft)}
+
+/* Free or AI reading */
+.gate.choose{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0;border:0;background:none}
+.gate.choose .choice{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surface)}
+.gate.choose .choice:first-child{border-color:var(--accent);background:var(--accent-soft)}
+.gate.choose .choice span{font-size:13px;color:var(--muted);line-height:1.45}
+.gate.choose .choice span b{color:var(--ink)}
+.gate.choose .choice .btn{align-self:flex-start;margin-top:auto}
+.free-done{display:flex;flex-direction:column;gap:4px}
+@media (max-width:560px){.gate.choose{grid-template-columns:1fr}}
