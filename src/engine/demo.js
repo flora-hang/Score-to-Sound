@@ -97,7 +97,7 @@ P2: r:h
 P3: r:h
 P4: r:h
 P5: r:h
-P6.1: C#4+E4:8!st r:8 C#4+E4:8!st C#4+E4:8!st
+P6.1: C#4+E4:8!st r:8 C#4+F4:8!st C#4+E4:8!st
 P6.2: D2:8!st r:16 A2:16( G3:8!st) A2:8!st
 M 12
 P1: D4:q"ser."( D5:8"Rien") C#5:8"n'y"
@@ -161,7 +161,7 @@ P2: r:h
 P3: r:h
 P4: r:h
 P5: r:h
-P6.1: C#4+E4:8!st r:8 C#4+E4:8!st C#4+E4:8!st
+P6.1: C#4+E4:8!st r:8 C#4+F4:8!st C#4+E4:8!st
 P6.2: D2:8!st r:16 A2:16( G3:8!st) A2:8!st
 M 20 | key=2 major
 P1: D4:q~"plaît." D4:8 r:8
@@ -177,7 +177,7 @@ P2: C5:8t3"est" C5:8t3"un" C5:8t3"oi-" B4:8"seau" Bb4:8"re-"
 P3: C5:8t3"est" C5:8t3"un" C5:8t3"oi-" B4:8"seau" Bb4:8"re-"
 P4: F#4:8t3"est" F#4:8t3"un" F#4:8t3"oi-" F#4:8"seau" F#4:8"re-"
 P5: D4:8t3"est" D4:8t3"un" D4:8t3"oi-" D4:8"seau" D4:8"re-"
-P6.1: E4+C5:8t3!st C5:8t3!st C5:8t3!st E4+B4:8!st E4+Bb4:8!st
+P6.1: F#4+C5:8t3!st C5:8t3!st C5:8t3!st F#4+B4:8!st F#4+Bb4:8!st
 P6.2: D2:8!st r:16 A2:16( F#3:8!st) A2:8!st
 M 22
 P1: A4:q~"mour!" A4:8 r:8
@@ -577,7 +577,7 @@ P2: r:h
 P3: r:h
 P4: r:h
 P5: r:h
-P6.1: C#4+E4:8!st r:8 C#4+E4:8!st C#4+E4:8!st
+P6.1: C#4+E4:8!st r:8 C#4+F4:8!st C#4+E4:8!st
 P6.2: D2:8!st r:16 A2:16( G3:8!st) A2:8!st
 M 72
 P1: D4:q"là!"( D5:8"Tout") C#5:8"au-"
@@ -641,7 +641,7 @@ P2: r:h
 P3: r:h
 P4: r:h
 P5: r:h
-P6.1: C#4+E4:8!st r:8 C#4+E4:8!st C#4+E4:8!st
+P6.1: C#4+E4:8!st r:8 C#4+F4:8!st C#4+E4:8!st
 P6.2: D2:8!st r:16 A2:16( G3:8!st) A2:8!st
 M 80 | key=2 major
 P1: D4:q~"plaît." D4:8 r:8
@@ -657,7 +657,7 @@ P2: C5:8t3"est" C5:8t3"un" C5:8t3"oi-" B4:8"seau" Bb4:8"re-"
 P3: C5:8t3"est" C5:8t3"un" C5:8t3"oi-" B4:8"seau" Bb4:8"re-"
 P4: F#4:8t3"est" F#4:8t3"un" F#4:8t3"oi-" F#4:8"seau" F#4:8"re-"
 P5: D4:8t3"est" D4:8t3"un" D4:8t3"oi-" D4:8"seau" D4:8"re-"
-P6.1: E4+C5:8t3!st C5:8t3!st C5:8t3!st E4+B4:8!st E4+Bb4:8!st
+P6.1: F#4+C5:8t3!st C5:8t3!st C5:8t3!st F#4+B4:8!st F#4+Bb4:8!st
 P6.2: D2:8!st r:16 A2:16( F#3:8!st) A2:8!st
 M 82
 P1: A4:q~"mour!" A4:8 r:8
