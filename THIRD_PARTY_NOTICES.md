@@ -12,6 +12,8 @@ This project uses the following. Each remains under its own license. The librari
 | JSZip 3.10.1 | npm `jszip` | Stuart Knightley and contributors | MIT (dual-licensed MIT or GPLv3; used under MIT) |
 | homr 0.7.1 (free note reading, server only) | `omr/` container, installed from PyPI | Christian Liebhardt and contributors | [GNU AGPL v3](https://www.gnu.org/licenses/agpl-3.0.html) |
 | ONNX Runtime 1.32.0 (used by homr) | `omr/` container, installed from PyPI | Microsoft Corporation | MIT |
+| RapidOCR 3.10.0, with its PP-OCR models (简谱 reader's text reading, server only) | `omr/` container, installed from PyPI | RapidAI and contributors; models by the PaddlePaddle authors (PaddleOCR) | Apache License 2.0 |
+| OpenCV 4.14 (`opencv-python-headless`, used by homr and the 简谱 reader) | `omr/` container, installed from PyPI | OpenCV team and contributors | Apache License 2.0 |
 
 ## Salamander Grand Piano
 

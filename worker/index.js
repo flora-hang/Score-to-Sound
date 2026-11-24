@@ -41,6 +41,7 @@ export default {
       if(path === "/api/stripe/webhook" && post) return await webhook(request, env);
 
       if(path === "/api/omr/page" && post) return await readPageFree(request, env);
+      if(path === "/api/omr/jianpu" && post) return await readPageFree(request, env, "jianpu");
 
       if(path === "/api/jobs" && post){
         if(!env.ANTHROPIC_API_KEY) throw new ApiError(503, "ai_unavailable", "AI reading isn't set up yet.");

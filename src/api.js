@@ -53,11 +53,14 @@ export const finishJob = jobId => call(`/api/jobs/${jobId}/finish`, {method: "PO
 /** Read one page with AI. Streams progress; resolves {status, text, bars, truncated} or throws {code, message, retryable}. */
 /** Free note reading of one page (no sign-in). Returns MusicXML text. The first page can take
     longer while a reader starts up, so allow a few minutes. */
-export async function readPageFree(blob, {signal} = {}){
+/** kind "staff" → MusicXML text; kind "jianpu" → the app's text notation.
+    hints (简谱 only, from earlier pages): {key: "Bb", time: "3/4", bar: 17}. */
+export async function readPageFree(blob, {signal, kind = "staff", hints = null} = {}){
+  const q = hints ? "?" + new URLSearchParams(Object.entries(hints).filter(([, v]) => v != null && v !== "")).toString() : "";
   const tm = withTimeout(240000, signal);
   let res;
   try{
-    res = await fetch(base + "/api/omr/page", {method: "POST", body: blob, signal: tm.signal, credentials: "include",
+    res = await fetch(base + (kind === "jianpu" ? "/api/omr/jianpu" + (q.length > 1 ? q : "") : "/api/omr/page"), {method: "POST", body: blob, signal: tm.signal, credentials: "include",
       headers: {"x-requested-with": "fetch", "content-type": blob.type || "image/jpeg"}});
     if(res.ok) return await res.text();
   }catch(err){
