@@ -51,6 +51,29 @@ export const lookupJob = (fileHash, pages) => call(`/api/jobs/lookup?hash=${file
 export const finishJob = jobId => call(`/api/jobs/${jobId}/finish`, {method: "POST"});
 
 /** Read one page with AI. Streams progress; resolves {status, text, bars, truncated} or throws {code, message, retryable}. */
+/** Free note reading of one page (no sign-in). Returns MusicXML text. The first page can take
+    longer while a reader starts up, so allow a few minutes. */
+/** kind "staff" → MusicXML text; kind "jianpu" → the app's text notation.
+    hints (简谱 only, from earlier pages): {key: "Bb", time: "3/4", bar: 17}. */
+export async function readPageFree(blob, {signal, kind = "staff", hints = null} = {}){
+  const q = hints ? "?" + new URLSearchParams(Object.entries(hints).filter(([, v]) => v != null && v !== "")).toString() : "";
+  const tm = withTimeout(240000, signal);
+  let res;
+  try{
+    res = await fetch(base + (kind === "jianpu" ? "/api/omr/jianpu" + (q.length > 1 ? q : "") : "/api/omr/page"), {method: "POST", body: blob, signal: tm.signal, credentials: "include",
+      headers: {"x-requested-with": "fetch", "content-type": blob.type || "image/jpeg"}});
+    if(res.ok) return await res.text();
+  }catch(err){
+    if(signal && signal.aborted) throw {code: "cancelled"};
+    if(tm.signal.aborted) throw {code: "timeout", message: "The free reader took too long. Press Retry.", retryable: true};
+    throw {...OFFLINE};
+  }finally{ tm.done(); }
+  let data = null; try{ data = await res.json(); }catch(_){}
+  const e = (data && data.error) || {};
+  throw {status: res.status, code: e.code || "server_error", message: e.message || "The free reader had a problem with this page. Please try again.",
+    retryable: e.retryable ?? (res.status >= 500 || res.status === 429)};
+}
+
 export async function readPageWithServer(jobId, pageNo, blob, {signal, onBars} = {}){
   // If nothing at all arrives for this long, give up and offer Retry instead of spinning forever.
   const IDLE_MS = 120000;

@@ -10,6 +10,10 @@ This project uses the following. Each remains under its own license. The librari
 | PDF.js 3.11.174 | npm `pdfjs-dist` | Mozilla Foundation | Apache License 2.0 |
 | React 18.3.1, React DOM 18.3.1 | npm `react`, `react-dom` | Meta Platforms, Inc. and affiliates | MIT |
 | JSZip 3.10.1 | npm `jszip` | Stuart Knightley and contributors | MIT (dual-licensed MIT or GPLv3; used under MIT) |
+| homr 0.7.1 (free note reading, server only) | `omr/` container, installed from PyPI | Christian Liebhardt and contributors | [GNU AGPL v3](https://www.gnu.org/licenses/agpl-3.0.html) |
+| ONNX Runtime 1.32.0 (used by homr) | `omr/` container, installed from PyPI | Microsoft Corporation | MIT |
+| RapidOCR 3.10.0, with its PP-OCR models (简谱 reader's text reading, server only) | `omr/` container, installed from PyPI | RapidAI and contributors; models by the PaddlePaddle authors (PaddleOCR) | Apache License 2.0 |
+| OpenCV 4.14 (`opencv-python-headless`, used by homr and the 简谱 reader) | `omr/` container, installed from PyPI | OpenCV team and contributors | Apache License 2.0 |
 
 ## Salamander Grand Piano
 
@@ -28,3 +32,7 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## homr (free note reading)
+
+The free note reader runs [homr](https://github.com/liebharc/homr), an optical music recognition program by Christian Liebhardt and contributors, licensed under the GNU Affero General Public License v3. It runs **unchanged**, as a separate program in its own container (`omr/`), and the app only sends it page images and reads back the MusicXML it writes. Its complete source code is available at https://github.com/liebharc/homr (version 0.7.1). If you change homr's own code, the AGPL requires you to offer your changed source to the people who use it over the network.

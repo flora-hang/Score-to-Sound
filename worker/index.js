@@ -5,6 +5,10 @@ import { getUser, requireUser, logout, sendEmailLink, emailLinkPage, verifyEmail
 import { creditsOf } from "./credits.js";
 import { createJob, readPage, finishJob, lookupJob } from "./reading.js";
 import { paymentsOn, prices, checkout, portal, webhook } from "./billing.js";
+import { omrOn, readPageFree } from "./omr.js";
+
+// The free note reader's container (Cloudflare needs its class exported from the Worker).
+export { OmrReader } from "./omr.js";
 
 export default {
   async fetch(request, env, ctx){
@@ -18,7 +22,7 @@ export default {
       if(path === "/api/config" && method === "GET") return json({
         ai: !!env.ANTHROPIC_API_KEY, email: !!env.RESEND_API_KEY || env.DEV_MODE === "1", google: !!env.GOOGLE_CLIENT_ID,
         trialSongs: int(env.TRIAL_SONGS, 1), pagesPerSong: int(env.PAGES_PER_SONG, 6), maxPages: int(env.MAX_PAGES, 40),
-        payments: paymentsOn(env), prices: await prices(env),
+        payments: paymentsOn(env), prices: await prices(env), omr: omrOn(env),
       });
       if(path === "/api/me" && method === "GET"){
         const u = await getUser(request, env);
@@ -35,6 +39,9 @@ export default {
       if(path === "/api/billing/checkout" && post) return await checkout(request, env, await requireUser(request, env));
       if(path === "/api/billing/portal" && post) return await portal(request, env, await requireUser(request, env));
       if(path === "/api/stripe/webhook" && post) return await webhook(request, env);
+
+      if(path === "/api/omr/page" && post) return await readPageFree(request, env);
+      if(path === "/api/omr/jianpu" && post) return await readPageFree(request, env, "jianpu");
 
       if(path === "/api/jobs" && post){
         if(!env.ANTHROPIC_API_KEY) throw new ApiError(503, "ai_unavailable", "AI reading isn't set up yet.");

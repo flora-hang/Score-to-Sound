@@ -12,3 +12,4 @@ Thumbs.db
 # Cloudflare local development
 .dev.vars
 .wrangler/
+__pycache__/

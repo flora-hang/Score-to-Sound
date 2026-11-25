@@ -17,6 +17,22 @@ database_name = "score-to-sound"
 database_id = "ced2ad7c-628d-4c3f-8b02-8ebe2b4a986a"   # from: npx wrangler d1 create score-to-sound
 migrations_dir = "migrations"
 
+# Free note reading: homr in a Cloudflare Container (see omr/ and worker/omr.js).
+# Needs the Workers Paid plan. 2 vCPU reads a page in about 22 seconds.
+[[containers]]
+class_name = "OmrReader"
+image = "./omr/Dockerfile"
+instance_type = { vcpu = 2, memory_mib = 6144, disk_mb = 8000 }
+max_instances = 3
+
+[[durable_objects.bindings]]
+name = "OMR"
+class_name = "OmrReader"
+
+[[migrations]]
+tag = "omr-v1"
+new_sqlite_classes = ["OmrReader"]
+
 [observability]
 enabled = true
 
@@ -36,6 +52,9 @@ EMAIL_FROM = "Personal Accompanist <signin@scoretosound.com>"
 # Payments (Stripe). The prices themselves are set in Stripe; these say how many songs each one gives.
 PACK_SONGS = "5"
 MONTHLY_SONGS = "10"
+# Free note reading: pages per internet connection per hour, and containers to share pages across.
+OMR_PAGES_PER_HOUR = "60"
+OMR_INSTANCES = "3"
 # Abuse limits
 PAGES_PER_HOUR = "60"
 EMAILS_PER_HOUR = "5"

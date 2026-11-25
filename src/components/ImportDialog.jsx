@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import Modal from "./Modal.jsx";
 import { FileIcon } from "./Icons.jsx";
-import FreeReaderGuide from "./FreeReaderGuide.jsx";
 import { SignInForm, GetMoreSongs } from "./AccountDialog.jsx";
 import PagePrep from "./PagePrep.jsx";
-import { decodeImage, analyse, rotated, cutPages } from "../engine/prep.js";
+import { decodeImage, analyse, rotated, cutPages, guessNotation } from "../engine/prep.js";
 import { isImageFile, isPdf, isMusicXml, readMusicXmlFile, pdfToPages, MAX_PAGES,
   buildPrompt, headerContext, transcribePage, mergePages, SAMPLE_ERR, STOP_CODES } from "../engine/reader.js";
-import { createJob, finishJob, lookupJob, readPageWithServer, fingerprint } from "../api.js";
+import { createJob, finishJob, lookupJob, readPageWithServer, readPageFree, fingerprint } from "../api.js";
+import { omrPagesToScore } from "../engine/omr.js";
 
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
@@ -17,10 +17,21 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
  *  - PDFs and photos are read page by page with AI:
  *      "server": through our own server (sign-in, song credits)  — the public app
  *      "claude": through the viewer's own Claude                 — when opened inside Claude
- *      "free":   no AI available here; show the Audiveris route
+ *      "free":   no AI available here; MusicXML only (unless free reading is on)
+ *  - Where the server offers it, pages can also be read free (see worker/omr.js), no sign-in, no songs:
+ *      staff notation: the notes of every part, but no lyrics (homr)
+ *      简谱 (numbered notation): the melody and the lyrics (omr/jianpu.py)
+ *    The page is checked for staves to tell which it is (people can change it), then people choose.
  */
 export default function ImportDialog({sample, account, onOpenText, onClose}){
   const mode = account.ai ? "server" : sample ? "claude" : "free";
+  const omr = !!(account.config && account.config.omr) && mode !== "claude";   // free note reading on our server
+  const [via, setViaState] = useState("ai");     // how these pages are being read: "ai" or "omr"
+  const viaRef = useRef("ai");
+  const [notation, setNotationState] = useState("staff");   // what the pages look like: "staff" or "jianpu"
+  const notationRef = useRef("staff");
+  const setNotation = v => { notationRef.current = v; setNotationState(v); };
+  const setVia = v => { viaRef.current = v; setViaState(v); };
   const [pages, setPages] = useState([]);          // {n, url, blob, label, status, bars, text, truncated, retryable}
   const [progress, setProgress] = useState(null);  // {reading} | {done} | {note}
   const [error, setError] = useState("");
@@ -45,7 +56,7 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
   const reset = () => {
     dropSheets(sheetsRef.current); setSheetList([]);
     pagesRef.current.forEach(p => URL.revokeObjectURL(p.url)); pagesRef.current = []; sync();
-    setProgress(null); setError(""); setGate(null); job.current = null; hash.current = null;
+    setProgress(null); setError(""); setGate(null); job.current = null; hash.current = null; setVia("ai");
   };
   const addPage = ({blob, label}) => { pagesRef.current.push({n: pagesRef.current.length + 1, url: URL.createObjectURL(blob), blob, label, status: "wait"}); sync(); };
   const songsFor = n => Math.ceil(n / (account.config ? account.config.pagesPerSong : 6));
@@ -64,7 +75,7 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
       if(!images && files.length > 1){ setError("Choose one PDF or MusicXML file, or several images. Mixing them isn't supported."); return; }
       if(!images && isMusicXml(files[0])){ onOpenText(await readMusicXmlFile(files[0])); return; }
       if(!images && !isPdf(files[0])){ setError("Choose a PDF, images (JPG, PNG, WebP, HEIC…), or a .musicxml, .xml or .mxl file."); return; }
-      if(mode === "free"){ setError("Reading PDFs and photos needs AI, which isn't available here. Use the free option below, or open a MusicXML file."); return; }
+      if(mode === "free" && !omr){ setError("Reading PDFs and photos isn't available in this copy of the app. Open a MusicXML file instead, or use scoretosound.com."); return; }
       if(mode === "claude" && !(await claudeReady())) return;
       setProgress({reading: "Preparing pages…"});
       if(images){
@@ -125,11 +136,34 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
     finally{ setPrepBusy(false); }
   }
 
-  /** Pages are ready: read straight away (inside Claude), or say what it costs (server). */
+  /** Pages are ready: read straight away (inside Claude), offer free or AI reading, or say what AI costs. */
   async function afterPages(){
+    if(!pagesRef.current.length) return;
+    if(mode === "claude"){ await run(); return; }
+    if(omr){
+      // Most of the pages decide (only the first three are looked at; that's plenty).
+      const looks = await Promise.all(pagesRef.current.slice(0, 3).map(p => guessNotation(p.blob).catch(() => "staff")));
+      setNotation(looks.filter(v => v === "jianpu").length * 2 > looks.length ? "jianpu" : "staff");
+      setGate({kind: "choose", songs: songsFor(pagesRef.current.length), ai: mode === "server"});
+      return;
+    }
+    await gateAI();
+  }
+
+  /** Free reading: notes only, no sign-in. */
+  async function startFree(){ setGate(null); setError(""); setVia("omr"); await run(); }
+
+  /** Read the same pages again with AI, e.g. after free reading, to get the lyrics too. */
+  async function switchToAI(){
+    pagesRef.current.forEach(p => { p.status = "wait"; p.xml = p.text = p.jianpu = undefined; p.bars = 0; });
+    sync(); setProgress(null); setError(""); setVia("ai");
+    await gateAI();
+  }
+
+  /** AI reading: sign in, then say what it costs (or that this score was read before). */
+  async function gateAI(){
+    setVia("ai");
     try{
-      if(!pagesRef.current.length) return;
-      if(mode === "claude"){ await run(); return; }
       const songs = songsFor(pagesRef.current.length);
       const now = await account.whenReady();
       if(now.status === "offline" && !now.user){ setError("Couldn't reach the server to check your account. Check your connection and try again."); return; }
@@ -160,7 +194,43 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
     }
   }
 
+  /** For 简谱: what the pages before this one said (key, time) and where its bar numbers start. */
+  function jianpuHints(i){
+    const before = pagesRef.current.slice(0, i).filter(p => p.status === "done" && p.jianpu);
+    if(!before.length) return null;
+    const last = before[before.length - 1].jianpu;
+    return {key: last.key, time: last.time, bar: before.reduce((s, p) => s + p.bars, 0) + 1};
+  }
+
+  async function readOneFree(i){
+    const pg = pagesRef.current[i], total = pagesRef.current.length, jianpu = notationRef.current === "jianpu";
+    ctl.current = new AbortController();
+    patch(i, {status: "run"});
+    const first = !pagesRef.current.some(p => p.status === "done" || p.status === "skip");
+    setProgress({reading: `Reading the ${jianpu ? "notes and lyrics" : "notes"} on page ${pg.n} of ${total}. About ${jianpu ? 20 : 25} seconds a page${first ? "; the first can take a minute while the reader starts" : ""}.`});
+    try{
+      if(jianpu){
+        const text = await readPageFree(pg.blob, {signal: ctl.current.signal, kind: "jianpu", hints: jianpuHints(i)});
+        const bars = (text.match(/^M\b/gm) || []).length;
+        const m = text.match(/^# jianpu 1=([A-G][#b]?) (\d+\/\d+)/m);
+        patch(i, bars ? {status: "done", text, bars, jianpu: m ? {key: m[1], time: m[2]} : {}} : {status: "skip"});
+        return;
+      }
+      const xml = await readPageFree(pg.blob, {signal: ctl.current.signal});
+      const firstPart = xml.split(/<part\s+id=/)[1] || "";
+      const bars = (firstPart.match(/<measure\b/g) || []).length;
+      patch(i, bars ? {status: "done", xml, bars} : {status: "skip"});
+    }catch(err){
+      if(err && err.code === "cancelled"){ patch(i, {status: "stopped"}); setProgress({note: "Stopped."}); return "stop"; }
+      if(err && err.code === "unreadable"){ patch(i, {status: "skip"}); return; }
+      patch(i, {status: "err", retryable: err.retryable !== false});
+      setError(err.message || "Reading this page failed.");
+      if(["rate_limited", "omr_off"].includes(err.code)) return "stop";
+    }
+  }
+
   async function readOne(i){
+    if(viaRef.current === "omr") return readOneFree(i);
     const pg = pagesRef.current[i], total = pagesRef.current.length;
     ctl.current = new AbortController();
     patch(i, {status: "run"});
@@ -195,7 +265,8 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
     }
     ctl.current = null; setRunning(false);
     const bars = pagesRef.current.filter(p => p.status === "done").reduce((s, p) => s + p.bars, 0);
-    if(bars) setProgress({done: bars});
+    if(bars) setProgress({done: bars, free: viaRef.current === "omr", jianpu: notationRef.current === "jianpu"});
+    else if(viaRef.current === "omr" && pagesRef.current.every(p => p.status === "skip")) setError("The free reader couldn't find music on these pages. Try straighter, sharper photos, or read them with AI.");
     // Close the reading on the server. If nothing could be read, the song comes back.
     if(mode === "server" && job.current && pagesRef.current.every(p => p.status !== "wait" && p.status !== "stopped")){
       try{
@@ -211,7 +282,11 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
   function open(){
     const done = pagesRef.current.filter(p => p.status === "done");
     if(!done.length) return;
-    try{ onOpenText(mergePages(done.map(p => p.text), fileName.current)); }
+    try{
+      if(viaRef.current === "omr" && notationRef.current === "jianpu") onOpenText(mergePages(done.map(p => p.text), fileName.current));
+      else if(viaRef.current === "omr") onOpenText(omrPagesToScore(done.map(p => p.xml), fileName.current).text);
+      else onOpenText(mergePages(done.map(p => p.text), fileName.current));
+    }
     catch(err){ setError(err.message); }
   }
 
@@ -234,15 +309,17 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
         onDragLeave={e => { e.preventDefault(); setOver(false); }}
         onDrop={e => { e.preventDefault(); setOver(false); if(!running) handleFiles(e.dataTransfer.files); }}>
         <FileIcon />
-        <b>{mode === "free" ? "Drop a MusicXML file here, or " : "Drop a PDF or photos of the score here, or "}<u>choose files</u></b>
-        <p>{mode === "free" ? "MusicXML from MuseScore, Finale, Sibelius, Dorico or Audiveris opens exactly as written."
-          : "Staff notation, with lyrics and choir parts. AI reads each page and writes out the notes."}</p>
+        <b>{mode === "free" && !omr ? "Drop a MusicXML file here, or " : "Drop a PDF or photos of the score here, or "}<u>choose files</u></b>
+        <p>{mode === "free" && !omr ? "MusicXML from MuseScore, Finale, Sibelius or Dorico opens exactly as written."
+          : mode === "free" ? "Staff notation or 简谱, read for free. MusicXML files open exactly as written."
+          : omr ? "Staff notation or 简谱 (numbered notation). Read it free, or with AI."
+          : "Staff notation or 简谱, with lyrics and choir parts. AI reads each page and writes out the notes."}</p>
         <input type="file" id="fileIn" multiple className="sr" disabled={running}
           accept=".pdf,.musicxml,.xml,.mxl,application/pdf,image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.heic,.heif,.tif,.tiff,.avif"
           onChange={e => { handleFiles(e.target.files); e.target.value = ""; }} />
       </label>
 
-      {mode !== "free" && !pages.length && !sheets.length && (
+      {(mode !== "free" || omr) && !pages.length && !sheets.length && (
         <ul className="tips" aria-label="Tips for photos">
           <li><b>One page per photo,</b> flat and well lit, with the whole page in the frame.</li>
           <li><b>Screenshots:</b> zoom in so the notes are big. You can trim off the player next.</li>
@@ -276,6 +353,35 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
         </div>
       )}
 
+      {gate && gate.kind === "choose" && (
+        <div className="gate choose">
+          <p className="kind-line">
+            {notation === "jianpu" ? <>These pages look like <b>简谱</b> (numbered notation).</> : <>These pages look like <b>staff notation</b>.</>}
+            {" "}<button className="linkish" onClick={() => setNotation(notation === "jianpu" ? "staff" : "jianpu")}>
+              {notation === "jianpu" ? "It's staff notation" : "It's 简谱 (numbered notation)"}</button>
+          </p>
+          {notation === "jianpu" ? (
+            <div className="choice">
+              <b>Read free</b>
+              <span>The melody <b>and lyrics</b>. About 20 seconds a page, no sign-in needed. Repeat signs aren't followed yet: the music is read straight through.</span>
+              <button className="btn primary" onClick={startFree}>Read free</button>
+            </div>
+          ) : (
+            <div className="choice">
+              <b>Read the notes free</b>
+              <span>Notes and rhythms of every part. <b>No lyrics.</b> About 25 seconds a page, no sign-in needed.</span>
+              <button className="btn primary" onClick={startFree}>Read notes free</button>
+            </div>
+          )}
+          {gate.ai && (
+            <div className="choice">
+              <b>Read with AI · {plural(gate.songs, "song")}</b>
+              <span>{notation === "jianpu" ? "Melody and lyrics, and it can follow repeats." : <>Notes <b>and lyrics</b>, the most accurate.</>} {account.user ? `You have ${plural(credits, "song")}.` : `Your first ${account.config.trialSongs === 1 ? "song is" : plural(account.config.trialSongs, "song") + " are"} free.`}</span>
+              <button className="btn" onClick={gateAI}>Read with AI</button>
+            </div>
+          )}
+        </div>
+      )}
       {gate && gate.kind === "signin" && (
         <div className="gate">
           <SignInForm config={account.config} intro={`Sign in to read these ${plural(pages.length, "page")} with AI. Your first ${account.config.trialSongs === 1 ? "song is" : plural(account.config.trialSongs, "song") + " are"} free. After signing in, open this score again.`} />
@@ -303,7 +409,16 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
           {progress && (
             <div className="progress">
               {progress.reading && <><span className="spin" />{progress.reading}</>}
-              {progress.done !== undefined && <span><b style={{color: "var(--ink)"}}>{plural(progress.done, "bar")} read.</b>&nbsp;Open the score, then use Edit notes if anything looks off.</span>}
+              {progress.done !== undefined && !progress.free && <span><b style={{color: "var(--ink)"}}>{plural(progress.done, "bar")} read.</b>&nbsp;Open the score, then use Edit notes if anything looks off.</span>}
+              {progress.done !== undefined && progress.free && progress.jianpu && (
+                <span><b style={{color: "var(--ink)"}}>{plural(progress.done, "bar")} read, with lyrics.</b>&nbsp;Open the score and check any bars it flags.</span>
+              )}
+              {progress.done !== undefined && progress.free && !progress.jianpu && (
+                <span className="free-done">
+                  <span><b style={{color: "var(--ink)"}}>{plural(progress.done, "bar")} read, without lyrics.</b>&nbsp;Open the score and check any bars it flags.</span>
+                  {mode === "server" && !running && <span>Want the words too? <button className="linkish" onClick={switchToAI}>Read these pages with AI instead</button></span>}
+                </span>
+              )}
               {progress.note}
             </div>
           )}
@@ -311,9 +426,8 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
         </div>
       )}
 
-      <FreeReaderGuide open={mode === "free"} />
-      <div className="notice">{mode === "server"
-        ? <>Page images are sent securely to our AI provider (Anthropic) only to read the notes, and aren't shared with anyone else. <a href="./privacy" target="_blank" rel="noopener">Privacy policy</a></>
+      <div className="notice">{mode === "server" || omr
+        ? <>Page images are only used to read the notes: free reading happens on our own servers, and AI reading sends them securely to our AI provider (Anthropic). They aren't kept or shared. <a href="./privacy" target="_blank" rel="noopener">Privacy policy</a></>
         : "Your files stay on this device. Page images are sent to Claude only to read the notes, and nothing is shared with anyone else."}</div>
     </Modal>
   );

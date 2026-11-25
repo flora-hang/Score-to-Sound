@@ -159,3 +159,49 @@ export async function cutPages(src, crop, split){
   }
   return out;
 }
+
+/**
+ * Staff notation or 简谱 (numbered notation)? Staff notation has five-line staves; 简谱 has none.
+ * The page is cut into narrow strips (so a tilted photo still has straight-enough lines in each),
+ * and each strip is searched for five evenly spaced dark lines. Printed and photographed staff
+ * pages show ten or more such staves; 简谱 pages show none. Returns "staff" or "jianpu".
+ */
+export async function guessNotation(blob){
+  let bmp;
+  try{ bmp = await createImageBitmap(blob); }catch(_){ return "staff"; }
+  const s = Math.min(1, ANALYSIS_SIDE / Math.max(bmp.width, bmp.height));
+  const w = Math.max(16, Math.round(bmp.width * s)), h = Math.max(16, Math.round(bmp.height * s));
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const cx = c.getContext("2d", {willReadFrequently: true});
+  cx.fillStyle = "#fff"; cx.fillRect(0, 0, w, h); cx.drawImage(bmp, 0, 0, w, h);
+  if(bmp.close) bmp.close();
+  const d = cx.getImageData(0, 0, w, h).data, g = new Uint8Array(w * h);
+  for(let i = 0; i < w * h; i++) g[i] = (d[i * 4] * 299 + d[i * 4 + 1] * 587 + d[i * 4 + 2] * 114) / 1000;
+  const STRIPS = 16, found = [];
+  for(let b = 0; b < STRIPS; b++){
+    const x0 = Math.floor(b * w / STRIPS), x1 = Math.floor((b + 1) * w / STRIPS), bw = x1 - x0;
+    // paper brightness in this strip: the 90th percentile
+    const hist = new Uint32Array(256);
+    for(let y = 0; y < h; y++) for(let x = x0; x < x1; x++) hist[g[y * w + x]]++;
+    let paper = 255, k = 0; const need = bw * h * .1;
+    for(let v = 255; v >= 0; v--){ k += hist[v]; if(k >= need){ paper = v; break; } }
+    const limit = paper * .85;
+    // centres of thin dark rows (lines) in this strip
+    const ys = [];
+    for(let y = 0; y < h; ){
+      const line = yy => { let n = 0; for(let x = x0; x < x1; x++) if(g[yy * w + x] < limit) n++; return n > bw * .5; };
+      if(!line(y)){ y++; continue; }
+      let e = y; while(e + 1 < h && line(e + 1)) e++;
+      if(e - y < 4) ys.push((y + e) / 2);
+      y = e + 1;
+    }
+    let staves = 0;
+    for(let i = 0; i + 4 < ys.length; ){
+      const gaps = [1, 2, 3, 4].map(j => ys[i + j] - ys[i + j - 1]), lo = Math.min(...gaps), hi = Math.max(...gaps);
+      if(lo >= 3 && hi <= 25 && hi <= lo * 1.35){ staves++; i += 5; } else i++;
+    }
+    found.push(staves);
+  }
+  found.sort((p, q) => p - q);
+  return found[STRIPS - 3] >= 2 ? "staff" : "jianpu";
+}

@@ -123,6 +123,26 @@ export function parseScore(text){
   }
   sc.parts.forEach(p => { let n = 0; sc.measures.forEach(m => Object.entries(m.staves).forEach(([k,vs]) => { if(k.startsWith(p.id+".")) vs.forEach(v => v.forEach(e => { let L = e.lyrics.length; while(L && !e.lyrics[L-1]) L--; n = Math.max(n, L); })); })); p.lyricLines = n; });
   if(!sc.title) sc.title = "Untitled score";
+  // bars whose notes don't add up to the time signature (a misread rhythm, a missing rest…)
+  const partName = k => {
+    const p = sc.parts.find(p => p.id === k.split(".")[0]);
+    if(!p) return k;
+    const s = +k.split(".")[1];
+    return p.clefs.length > 1 ? `${p.name} ${s === 1 ? "upper" : s === p.clefs.length ? "lower" : "middle"} staff` : p.name;
+  };
+  sc.measures.forEach(m => {
+    if(m.partial) return;
+    const want = m.time[0] * 4 / m.time[1];
+    for(const [k, vs] of Object.entries(m.staves)) vs.forEach((v, vi) => {
+      if(!v.length || v.some(e => e.mrest)) return;
+      const got = v.reduce((t, e) => t + (e.grace ? 0 : e.beats), 0);
+      // a second voice may be written shorter; any voice may not be longer than the bar
+      if(got > want + 1e-3 || (vi === 0 && got < want - 1e-3)){
+        const r = x => +x.toFixed(2);
+        warns.push(`Bar ${m.num}, ${partName(k)}${vs.length > 1 ? ` (voice ${vi + 1})` : ""}: the notes add up to ${r(got)} beats, but the bar has ${r(want)}`);
+      }
+    });
+  });
   // every event gets an address (bar | staff | voice | position) so visual edits can find it again
   sc.measures.forEach((m, mi) => Object.entries(m.staves).forEach(([k, vs]) => vs.forEach((v, vi) => v.forEach((e, ei) => { e.addr = `${mi}|${k}|${vi}|${ei}`; }))));
   return {score: sc, warns};
