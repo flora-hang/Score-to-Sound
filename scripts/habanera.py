@@ -45,7 +45,7 @@ _R = {
     "e": "Bb3+E4:8!st r:8 E4+D5:8!st E4+C#5:8!st",
     "f": "E4+C5:8!st r:8 E4+B4:8!st E4+Bb4:8!st",
     "g": "E4+A4:8!st r:8 D4+G4:8!st D4+F4:8!st",
-    "h": "C#4+E4:8!st r:8 C#4+E4:8!st C#4+E4:8!st",
+    "h": "C#4+E4:8!st r:8 C#4+F4:8!st C#4+E4:8!st",
     "i": "D4:8!st r:8 F4+D5:8!st F4+C#5:8!st",
 }
 VERSE_RH = [_R[k] for k in "abcdefghibcdefgh"]
@@ -85,7 +85,7 @@ REFRAIN = [
  ["r:q F#4:q{L'a-}",
   "C5:8t3{est} C5:8t3{un} C5:8t3{oi-} B4:8{seau} Bb4:8{re-}", "C5:8t3{est} C5:8t3{un} C5:8t3{oi-} B4:8{seau} Bb4:8{re-}",
   "F#4:8t3{est} F#4:8t3{un} F#4:8t3{oi-} F#4:8{seau} F#4:8{re-}", "D4:8t3{est} D4:8t3{un} D4:8t3{oi-} D4:8{seau} D4:8{re-}",
-  "E4+C5:8t3!st C5:8t3!st C5:8t3!st E4+B4:8!st E4+Bb4:8!st", "AF"],
+  "F#4+C5:8t3!st C5:8t3!st C5:8t3!st F#4+B4:8!st F#4+Bb4:8!st", "AF"],
  # 22
  ["A4:q~{mour!} A4:8 r:8",
   "A4:8{bel-} A4:16{le} A4:16{Que} G#4:8{nul} G4:8{ne}", "A4:8{bel-} A4:16{le} A4:16{Que} G#4:8{nul} G4:8{ne}",
