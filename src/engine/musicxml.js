@@ -15,6 +15,25 @@ export function musicXmlToText(xml){
   let firstKey = 0, firstMode = "major", firstTime = "4/4", firstTempo = null;
   const typeMap = {breve:"w", whole:"w", half:"h", quarter:"q", eighth:"8", "16th":"16", "32nd":"32", "64th":"64", "128th":"64"};
   const beatsToTokens = (beats) => { const out = []; const opts = [[4,"w"],[3,"h."],[2,"h"],[1.5,"q."],[1,"q"],[.75,"8."],[.5,"8"],[.25,"16"],[.125,"32"],[.0625,"64"]]; let r = beats; for(const [b,d] of opts){ while(r >= b - 1e-4){ out.push(d); r -= b; } } return out; };
+  // repeat signs and jumps (read from the first part; they apply to every part)
+  let endingOpen = null;
+  const jumpWords = (M, w) => {
+    if(!w) return;
+    const al = /al\s*fine/i.test(w) ? "-al-fine" : /al\s*coda/i.test(w) ? "-al-coda" : "";
+    if(/\bD\.?\s*C\.?(\s|$)|da\s*capo/i.test(w)) M.opts.push("dc" + al);
+    else if(/\bD\.?\s*S\.?(\s|$)|dal\s*segno/i.test(w)) M.opts.push("ds" + al);
+    else if(/^\s*fine\s*$/i.test(w)) M.opts.push("fine");
+    else if(/to\s*coda/i.test(w)) M.opts.push("tocoda");
+  };
+  const soundMarks = (M, snd) => {
+    if(!snd) return;
+    if(snd.getAttribute("segno")) M.opts.push("segno");
+    if(snd.getAttribute("coda")) M.opts.push("coda");
+    if(snd.getAttribute("tocoda")) M.opts.push("tocoda");
+    if(snd.getAttribute("fine")) M.opts.push("fine");
+    if(snd.getAttribute("dacapo") === "yes" && !M.opts.some(o => /^d[cs]/.test(o))) M.opts.push("dc");
+    if(snd.getAttribute("dalsegno") && !M.opts.some(o => /^d[cs]/.test(o))) M.opts.push("ds");
+  };
   const altStr = a => ({"-2":"bb","-1":"b","0":"","1":"#","2":"##"})[String(Math.round(+a||0))] || "";
   parts.forEach((pel, pi) => {
     const pid = `P${pi+1}`;
@@ -25,8 +44,22 @@ export function musicXmlToText(xml){
       const M = measures[mi] ||= {num: mEl.getAttribute("number"), implicit: mEl.getAttribute("implicit") === "yes", opts: [], lines: {}};
       let pos = 0; const voices = {}; const pendMark = {};
       const addMark = (staff, mark) => { (pendMark[staff] ||= []).push(mark); };
+      let endingHere = null, endingStops = false;
       for(const c of mEl.children){
         const tag = c.tagName;
+        if(tag === "barline" && pi === 0){
+          const r = kid(c, "repeat");
+          if(r && r.getAttribute("direction") === "forward") M.opts.push("repeat-start");
+          if(r && r.getAttribute("direction") === "backward"){ const t = +(r.getAttribute("times") || 2); M.opts.push(t > 2 ? `repeat-end=${t}` : "repeat-end"); }
+          const en = kid(c, "ending");
+          if(en){
+            const nums = (en.getAttribute("number") || "1").split(/[\s,]+/).filter(x => /^\d$/.test(x));
+            if(en.getAttribute("type") === "start" && nums.length){ endingOpen = nums.join(","); endingHere = endingOpen; }
+            else endingStops = true;
+          }
+          soundMarks(M, kid(c, "sound"));
+        }
+        else if(tag === "sound" && pi === 0) soundMarks(M, c);
         if(tag === "attributes"){
           const d = txt(c, "divisions"); if(d) div = +d;
           const st = txt(c, "staves"); if(st) nst = +st;
@@ -47,6 +80,13 @@ export function musicXmlToText(xml){
           const snd = kid(c, "sound");
           if(snd && snd.getAttribute("tempo") && pi === 0){ const tp = Math.round(+snd.getAttribute("tempo")); const words = (c.querySelector("direction-type > words")||{}).textContent || ""; if(mi === 0 && firstTempo === null) firstTempo = `${tp} ${words}`.trim(); else M.opts.push(`tempo=${tp}${words ? ` "${words.replace(/"/g,"'")}"` : ""}`); }
           else if(pi === 0){ const words = (c.querySelector("direction-type > words")||{}).textContent; if(words && /rit|rall/i.test(words)) M.opts.push("rit"); }
+          if(pi === 0){
+            if(c.querySelector("direction-type > segno")) M.opts.push("segno");
+            const words = [...c.querySelectorAll("direction-type > words")].map(w => w.textContent).join(" ");
+            if(c.querySelector("direction-type > coda")) M.opts.push(/to\s*coda/i.test(words) ? "tocoda" : "coda");
+            else jumpWords(M, words);
+            soundMarks(M, snd);
+          }
         } else if(tag === "sound" && c.getAttribute("tempo") && pi === 0){ const tp = Math.round(+c.getAttribute("tempo")); if(mi === 0 && firstTempo === null) firstTempo = String(tp); else M.opts.push(`tempo=${tp}`); }
         else if(tag === "backup"){ pos -= +(txt(c, "duration")||0); }
         else if(tag === "forward"){ pos += +(txt(c, "duration")||0); }
@@ -90,6 +130,7 @@ export function musicXmlToText(xml){
           V.end = start + dur; pos += dur;
         }
       }
+      if(pi === 0 && (endingOpen || endingHere)){ M.opts.push(`ending=${endingHere || endingOpen}`); if(endingStops) endingOpen = null; }
       const lyrStr = e => { if(!e.lyrics || !Object.keys(e.lyrics).length) return ""; const nums = order(); let arr = nums.map(n => e.lyrics[n] || ""); while(arr.length && !arr[arr.length-1]) arr.pop(); return arr.map(t => `"${t}"`).join(""); };
       const fmtEv = e => {
         if(e.mrest) return "R" + e.marks.filter(m=>m.startsWith("@")||m==="!fe").join("");
@@ -111,7 +152,7 @@ export function musicXmlToText(xml){
     let n = parseInt(M.num, 10); if(isNaN(n) || n <= num - (i?0:1)) n = i===0 ? (M.implicit?0:1) : num + 1;
     if(i>0 && n <= num) n = num + 1;
     num = n;
-    const opts = [...M.opts]; if(M.implicit) opts.push("pickup");
+    const opts = [...new Set(M.opts)]; if(M.implicit) opts.push("pickup");
     out += `M ${n}${opts.length ? " | " + opts.join(" | ") : ""}\n`;
     for(const k in M.lines) out += `${k}: ${M.lines[k]}\n`;
   });

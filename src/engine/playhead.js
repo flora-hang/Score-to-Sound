@@ -1,7 +1,7 @@
 /* The moving playhead, note highlighting and page turns. Runs every animation frame,
    so it updates the DOM directly instead of going through React state. */
 import { xAtBeat, sysForBeat } from "./engrave.js";
-import { secAt } from "./timeline.js";
+import { secAt, writtenBeat } from "./timeline.js";
 
 export class PlayheadController {
   constructor(scroller){
@@ -14,8 +14,9 @@ export class PlayheadController {
   destroy(){ ["wheel","touchstart","keydown"].forEach(t => document.removeEventListener(t, this.onUser)); if(this.turnAnim) cancelAnimationFrame(this.turnAnim); }
   setSystems(systems, view){ this.systems = systems; this.view = view; this.sys = null; this.lit = new Set(); this.turnedEarly = -1; }
   resetTurns(){ this.turnedEarly = -1; }
-  /** b: position in beats. s: {playing, follow, mix, tempoF}. */
+  /** b: played position in beats (along view.perf). s: {playing, follow, mix, tempoF}. */
   update(b, s, scrollIfNeeded){
+    if(this.view) b = writtenBeat(this.view, b);   // played position (repeats unfolded) → where it is printed
     const sys = sysForBeat(this.systems, Math.min(b, (this.view ? this.view.total : 0) - 1e-6));
     if(!sys){ this.el.remove(); return; }
     if(this.sys !== sys){ sys.el.appendChild(this.el); const prev = this.sys; this.sys = sys; if(s.follow && !s.playing && scrollIfNeeded && prev !== sys) this.scrollToSys(sys); }
@@ -39,6 +40,7 @@ export class PlayheadController {
   }
   scrollToSys(sys){
     const sc = this.scroller, r = sys.el.getBoundingClientRect(), rs = sc.getBoundingClientRect();
+    if(sys === this.systems[0]){ sc.scrollTo({top: 0, behavior: "auto"}); return; }   // the start: keep the title in view
     if(r.top >= rs.top + 10 && r.bottom <= rs.bottom - 10) return;
     sc.scrollTo({top: sc.scrollTop + (r.top - rs.top) - 40, behavior: "auto"});
   }

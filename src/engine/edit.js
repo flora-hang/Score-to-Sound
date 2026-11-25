@@ -79,9 +79,9 @@ export function toggleRest(sc, addr, clef){
     const L = LETTERS.indexOf(base[0]), alt = keyAlt(m.key, L);
     e.pitches = [{step: base[0], alt, oct: base[1], midi: natural(L, base[1]) + alt}];
     if(e.mrest){ const len = m.time[0] * 4 / m.time[1]; Object.assign(e, fitDuration(len)); e.mrest = false; }
-    e.rest = false;
+    e.rest = false; e.clap = false;
   } else {
-    e.rest = true; e.pitches = []; e.tie = false; e.slurS = e.slurE = false; e.lyrics = [];
+    e.rest = true; e.clap = false; e.pitches = []; e.tie = false; e.slurS = e.slurE = false; e.lyrics = [];
   }
 }
 export function toggleTie(sc, addr){ const {e} = findEvent(sc, addr); if(!e.rest) e.tie = !e.tie; }

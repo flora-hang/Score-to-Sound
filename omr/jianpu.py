@@ -205,11 +205,13 @@ class JianpuReader:
         binary = binarize(gray)
         comps, lab = components(binary)
         self._lab_cur = lab
+        self._comps, self._gray = comps, gray
         H = digit_height(comps) or 30
         page_h, page_w = gray.shape
 
         # 2. text lines
         lines = self.ocr.lines(img if img.ndim == 3 else cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR))
+        self._lines = lines
         head = parse_header(lines, page_h, H)
         # Lines of Chinese text (lyrics, title, credits). A dash "-" reads as the character 一, so a line
         # of notes and dashes isn't text: only count characters other than 一.
@@ -318,6 +320,55 @@ class JianpuReader:
             graces = [c for c in small if 0.3 * H <= c["h"] <= 0.72 * H and 0.25 * H <= c["w"] <= 0.6 * H
                       and top - 1.0 * H <= c["y"] and c["cy"] <= mid and c["a"] >= 0.2 * c["w"] * c["h"]]
 
+            # bar lines: thin, or thick + thin side by side (a double or repeat bar line)
+            parts = sorted([c for c in small if c["h"] >= 1.05 * H and c["w"] <= 0.4 * H and c["a"] >= 0.5 * c["w"] * c["h"]
+                            and c["y"] <= top + 0.1 * H and c["y"] + c["h"] >= bottom - 0.1 * H], key=lambda c: c["x"])
+            clusters = []
+            for c in parts:
+                if clusters and c["x"] - clusters[-1]["x1"] <= 0.6 * H:
+                    clusters[-1]["x1"] = c["x"] + c["w"]
+                    clusters[-1]["n"] += 1
+                else:
+                    clusters.append({"x0": c["x"], "x1": c["x"] + c["w"], "n": 1})
+            skip = {c["i"] for c in parts}
+            # repeat signs: two dots right next to the bar line.
+            # Dots on the left: end repeat ":‖"; on the right: start repeat "‖:".
+            colon = [c for c in small if c["i"] not in skip and 0.1 * H <= max(c["w"], c["h"]) <= 0.42 * H
+                     and 0.5 <= c["w"] / max(c["h"], 1) <= 2 and c["a"] >= 0.45 * c["w"] * c["h"]
+                     and top - 0.1 * H <= c["cy"] <= bottom]
+            r["barkind"] = {}
+            for cl in clusters:
+                left = [d for d in colon if cl["x0"] - 0.9 * H <= d["cx"] < cl["x0"]]
+                right = [d for d in colon if cl["x1"] < d["cx"] <= cl["x1"] + 0.9 * H]
+                # two dots one above the other (where they sit in the row varies between engravers)
+                pair = lambda ds: any(abs(p["cx"] - q["cx"]) <= 0.3 * H and 0.25 * H <= q["cy"] - p["cy"] <= 1.0 * H
+                                      for p in ds for q in ds)
+                end, start = pair(left), pair(right)
+                if end:
+                    skip.update(d["i"] for d in left)
+                if start:
+                    skip.update(d["i"] for d in right)
+                x = (cl["x0"] + cl["x1"]) / 2
+                r["bars"].append(x)
+                r["barkind"][x] = "endstart" if end and start else "end" if end else "start" if start else "bar"
+            # brackets over the row: 1st/2nd endings ("1." "2." at the left end). Straight lines, unlike slurs.
+            r["brackets"] = []
+            for c in comps:
+                if c["w"] < 2.0 * H or c["y"] + c["h"] > top - 0.1 * H or c["y"] < top - 2.2 * H or c["y"] < prev_bottom:
+                    continue
+                m = (self._lab_cur[c["y"]:c["y"] + c["h"], c["x"]:c["x"] + c["w"]] == c["i"])
+                if m.sum(axis=1).max() < 0.9 * c["w"]:
+                    continue
+                label = None
+                for l in self._lines:
+                    lx, ly = (l["x0"] + l["x1"]) / 2, (l["y0"] + l["y1"]) / 2
+                    if c["x"] - 0.3 * H <= lx <= c["x"] + 3 * H and c["y"] - 1.2 * H <= ly <= top:
+                        mm = re.match(r"\s*([1-9](?:\s*[,，、.]\s*[1-9])*)", l["text"])
+                        if mm:
+                            label = sorted({int(d) for d in re.findall(r"[1-9]", mm.group(1))})
+                            break
+                r["brackets"].append({"x0": c["x"], "x1": c["x"] + c["w"], "nums": label})
+
             def owner(x, slack=0.25):
                 best = None
                 for n in notes:
@@ -328,6 +379,8 @@ class JianpuReader:
                 return best
 
             for c in small:
+                if c["i"] in skip:
+                    continue
                 if c["cy"] < top - 1.8 * H or c["cy"] > bottom + 1.8 * H:
                     continue
                 if c["cy"] < (prev_bottom + top) / 2 or c["cy"] > (bottom + next_top) / 2:
@@ -338,7 +391,7 @@ class JianpuReader:
                 roundish = 0.55 <= w / max(h, 1) <= 1.8 and max(w, h) <= 0.42 * H and max(w, h) >= 0.17 * H and fill >= 0.45
                 tall = h >= 1.05 * H and w <= 0.22 * H and c["y"] <= top + 0.1 * H and c["y"] + h >= bottom - 0.1 * H
                 if tall:
-                    r["bars"].append(c["cx"])
+                    pass    # a bar line (handled above)
                 elif roundish and c["cy"] < top:
                     n = owner(c["cx"])
                     if n is not None:
@@ -499,11 +552,12 @@ class JianpuReader:
             return [[ch for l in g for ch in l["chars"]] for g in groups]
 
         measures, cur, cur_beats = [], [], 0.0
+        meta, cur_meta, pending_start = [], None, False     # per bar: row, x range, repeat signs
         n_verses = 1
         for k, (r, seq) in enumerate(events):
             verses = lyric_lines(k)
             n_verses = max(n_verses, len(verses))
-            pitched = [n for n in r["notes"] if n["glyph"] not in ("0", "X")]
+            pitched = [n for n in r["notes"] if n["glyph"] != "0"]     # claps (X) can carry words too
             for vi, chars in enumerate(verses):
                 for ch in chars:
                     c = ch["ch"]
@@ -514,10 +568,22 @@ class JianpuReader:
                     if best is not None and abs(best["cx"] - x) < 0.9 * H:
                         best.setdefault("lyr", {})[vi] = best.get("lyr", {}).get(vi, "") + c
             for kind, x, n in seq:
+                if kind != "|" and cur_meta is None:
+                    cur_meta = {"row": k, "x0": x, "x1": x, "start": pending_start, "end": False}
+                    pending_start = False
+                if kind != "|":
+                    cur_meta["x1"] = x
                 if kind == "|":
+                    bk = r["barkind"].get(x, "bar")
                     if cur:
+                        cur_meta["end"] = bk in ("end", "endstart")
                         measures.append(cur)
-                    cur, cur_beats = [], 0.0
+                        meta.append(cur_meta)
+                    elif bk in ("end", "endstart") and meta:
+                        meta[-1]["end"] = True       # ":‖" right after a plain bar line
+                    if bk in ("start", "endstart"):
+                        pending_start = True
+                    cur, cur_beats, cur_meta = [], 0.0, None
                 elif kind == "-":
                     if cur and cur[-1]["kind"] == "note":
                         cur[-1]["beats"] += 1
@@ -527,18 +593,52 @@ class JianpuReader:
                     beats = 1.0 / (2 ** n["lines"])
                     if n["dot"]:
                         beats *= 1.5
-                    if n["glyph"] in ("0", "X"):
+                    if n["glyph"] == "X":
+                        cur.append({"kind": "clap", "beats": beats, "lyr": n.get("lyr", {})})
+                    elif n["glyph"] == "0":
                         cur.append({"kind": "rest", "beats": beats})
                     else:
                         cur.append({"kind": "note", "beats": beats, "deg": int(n["glyph"]), "oct": n["up"] - n["down"],
                                     "acc": n["acc"], "lyr": n.get("lyr", {}), "tie": bool(n.get("tie"))})
         if cur:
             measures.append(cur)
+            meta.append(cur_meta)
+
+        # endings: a numbered bracket starts at the first bar under it. It lasts until the end-repeat that
+        # closes it (bars on rows without a bracket count too), or, for a last ending, as far as brackets go.
+        endings = [None] * len(measures)
+        starts = []
+        for k, r in enumerate(rows):
+            for b in r.get("brackets", []):
+                if not b["nums"]:
+                    continue
+                j = next((i for i, mt in enumerate(meta) if mt["row"] == k and mt["x1"] >= b["x0"] - 0.3 * H), None)
+                if j is not None:
+                    starts.append((j, b))
+        starts.sort(key=lambda t: t[0])
+        for si, (j, b) in enumerate(starts):
+            stop = starts[si + 1][0] if si + 1 < len(starts) else len(measures)
+            end = next((i for i in range(j, stop) if meta[i]["end"] or (i > j and meta[i]["start"])), None)
+            if end is not None and meta[end]["start"] and not meta[end]["end"]:
+                end = None
+            if end is None:
+                # as far as the bracket (and unnumbered brackets continuing it on the next rows) reach
+                covered, k0 = [], meta[j]["row"]
+                for i in range(j, stop):
+                    mt = meta[i]
+                    reach = b["x1"] if mt["row"] == k0 else max([c["x1"] for c in rows[mt["row"]].get("brackets", [])
+                                                                if not c["nums"] and c["x0"] <= rows[mt["row"]]["notes"][0]["x"] + H], default=None)
+                    if reach is None or mt["x0"] > reach:
+                        break
+                    covered.append(i)
+                end = covered[-1] if covered else j
+            for i in range(j, end + 1):
+                endings[i] = b["nums"]
 
         title = head["title"] or title_hint or "简谱"
         fifths = KEY_FIFTHS.get(tonic, 0)
         out = [f"TITLE: {title}", f"TEMPO: {head['tempo'] or 80}", f"KEY: {fifths} major", f"TIME: {num}/{den}",
-               "PART P1 | 演唱 | vocal | treble",
+               "PART P1 | Voice | vocal | treble",
                f"# jianpu 1={tonic} {num}/{den}"]   # read back by the app to read the next page in the same key
         for i, m in enumerate(measures, first_bar):
             toks = []
@@ -546,6 +646,10 @@ class JianpuReader:
                 durs = split_beats(e["beats"]) or ["q"]
                 if e["kind"] == "rest":
                     toks += [f"r:{d}" for d in durs]
+                    continue
+                if e["kind"] == "clap":
+                    lyr = "".join(f'"{e["lyr"].get(v, "")}"' for v in range(n_verses)) if e["lyr"] else ""
+                    toks += [f"X:{d}{lyr if j == 0 else ''}" for j, d in enumerate(durs)]
                     continue
                 name = note_name(tonic, e["deg"], e["oct"], e["acc"]) if 1 <= e["deg"] <= 7 else None
                 if not name:
@@ -555,7 +659,14 @@ class JianpuReader:
                 for j, d in enumerate(durs):
                     tie = "~" if (j < len(durs) - 1 or e.get("tie")) else ""
                     toks.append(f"{name}:{d}{tie}{lyr if j == 0 else ''}")
-            out.append(f"M {i}")
+            mt, opts = meta[i - first_bar], []
+            if mt and mt["start"]:
+                opts.append("repeat-start")
+            if endings[i - first_bar]:
+                opts.append("ending=" + ",".join(map(str, endings[i - first_bar])))
+            if mt and mt["end"]:
+                opts.append("repeat-end")
+            out.append(f"M {i}" + "".join(" | " + o for o in opts))
             out.append("P1.1: " + (" ".join(toks) if toks else "R"))
         return "\n".join(out) + "\n", {"rows": len(rows), "bars": len(measures), "tonic": tonic, "time": f"{num}/{den}", "H": H}
 

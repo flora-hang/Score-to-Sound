@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parseScore, serializeScore } from "./engine/notation.js";
 import * as E from "./engine/edit.js";
 import { transposeScore } from "./engine/keys.js";
-import { buildTimeline, measureAt } from "./engine/timeline.js";
+import { withPerformance, measureAt, playedBeat } from "./engine/timeline.js";
 import { DEMO } from "./engine/demo.js";
 import { usePlayer, useClock } from "./hooks/usePlayer.js";
 import useClaude from "./hooks/useClaude.js";
@@ -89,9 +89,8 @@ export default function App(){
 
   // The score in the chosen key, with every note's timing and expression worked out.
   const view = useMemo(() => {
-    const v = transposeScore(doc.score, transpose);
-    buildTimeline(v, {expressive});
-    return v;
+    // laid out as printed; view.perf is the order it's played in (repeats, endings, D.C./D.S.)
+    return withPerformance(transposeScore(doc.score, transpose), {expressive});
   }, [doc.score, transpose, expressive]);
 
   // ---- playback
@@ -101,25 +100,30 @@ export default function App(){
 
   const startAt = useCallback((from, withCountIn = false) => {
     const s = live.current;
-    player.play(s.view, from, {tempoF: s.tempoF, mix: s.mix, metronome: s.metronome, expressive: s.expressive, countIn: withCountIn});
+    player.play(s.view.perf, from, {tempoF: s.tempoF, mix: s.mix, metronome: s.metronome, expressive: s.expressive, countIn: withCountIn});
     setPlaying(true);
   }, [player]);
   const pause = useCallback(() => {
     const b = player.stop();
     setPlaying(false);
-    if(b !== null) setCursor(clamp(b, 0, live.current.view.total - 1e-6));
+    if(b !== null) setCursor(clamp(b, 0, live.current.view.perf.total - 1e-6));
   }, [player]);
   const play = useCallback(() => {
     const {cursor: c, view: v, countIn: ci} = live.current;
-    startAt(c >= v.total - 1e-6 ? 0 : c, ci);
+    startAt(c >= v.perf.total - 1e-6 ? 0 : c, ci);
   }, [startAt]);
   const togglePlay = useCallback(() => live.current.playing ? pause() : play(), [pause, play]);
   const seek = useCallback(b => {
-    b = clamp(b, 0, live.current.view.total - 1e-6);
+    b = clamp(b, 0, live.current.view.perf.total - 1e-6);
     if(live.current.playing) startAt(b); else setCursor(b);
   }, [startAt]);
-  const barStep = useCallback(dir => {
+  // A click on the page is a printed position; play the pass of that bar nearest to where we are.
+  const seekWritten = useCallback(b => {
     const {view: v, playing: p, cursor: c} = live.current;
+    seek(playedBeat(v, b, p ? (player.currentBeat() ?? c) : c));
+  }, [player, seek]);
+  const barStep = useCallback(dir => {
+    const {view: {perf: v}, playing: p, cursor: c} = live.current;
     const b = p ? (player.currentBeat() ?? c) : c;
     const m = measureAt(v, b);
     const target = dir < 0 ? ((b - m.start > .5 || m.idx === 0) ? m.start : v.measures[m.idx-1].start)
@@ -231,7 +235,7 @@ export default function App(){
     if(i < 0 || i >= order.length) return;
     setSel({addr: order[i], pi: 0});
     const e = E.findEvent(live.current.view, order[i]).e;
-    if(!e.rest) player.preview(e.pitches[e.pitches.length - 1].midi);
+    if(!e.rest && e.pitches.length) player.preview(e.pitches[e.pitches.length - 1].midi);
   }, [sel, player]);
 
   const ops = useMemo(() => {
@@ -254,7 +258,7 @@ export default function App(){
   }, [selInfo, view, edit, player, selectStep]);
 
   const movePitch = useCallback((s, steps) => {
-    const v = E.findEvent(live.current.view, s.addr); if(!v || v.e.rest) return;
+    const v = E.findEvent(live.current.view, s.addr); if(!v || v.e.rest || v.e.clap) return;
     const iv = E.stepMove(v.e.pitches[s.pi], steps, v.m.key);
     edit(sc => ({sel: {addr: s.addr, pi: E.applyInterval(sc, s.addr, s.pi, iv)}}));
   }, [edit]);
@@ -301,7 +305,7 @@ export default function App(){
           "#": () => isNote && o.accidental(1), b: () => isNote && o.accidental(-1), n: () => isNote && o.accidental(0),
           3: () => si && o.duration("16"), 4: () => si && o.duration("8"), 5: () => si && o.duration("q"), 6: () => si && o.duration("h"), 7: () => si && o.duration("w"),
           ".": () => si && o.dot(), t: () => isNote && o.tie(), r: () => si && o.rest(), i: () => si && o.insert(), e: () => k.toggleEditing(),
-          " ": () => { if(si && !live.current.playing) k.startAt(si.ve.onset); else k.togglePlay(); },
+          " ": () => { if(si && !live.current.playing) k.startAt(playedBeat(live.current.view, si.ve.onset, live.current.cursor)); else k.togglePlay(); },
         };
         const fn = em[e.key.length === 1 ? e.key.toLowerCase() : e.key] || (e.key === "#" ? em["#"] : null);
         if(fn){ e.preventDefault(); fn(); return; }
@@ -339,7 +343,7 @@ export default function App(){
         account={account} onAccount={() => setDialog("account")} />
       <div className="work">
         <ScoreView view={view} transpose={transpose} zoom={zoom} lyricsAbove={lyricsAbove} hiddenLines={hiddenLines}
-          clock={clock} playing={playing} cursor={cursor} follow={follow} mix={mix} tempoF={tempoF} onSeek={seek}
+          clock={clock} playing={playing} cursor={cursor} follow={follow} mix={mix} tempoF={tempoF} onSeek={seekWritten}
           isDemo={doc.demo} onExample={() => { setBackTo(doc.score.title || "your score"); openScore(DEMO, {demo: true}); }}
           backTo={doc.demo ? backTo : null} onBack={() => { const mine = readLast(owner); setBackTo(null); if(mine) openScore(mine.src, {id: mine.id, settings: mine.settings}); }} warnCount={doc.warns.length} onReview={() => setDialog("text")} soundState={soundState}
           editing={editing} selection={selInfo ? {addr: selInfo.addr, pi: selInfo.pi} : null} onSelect={selectNote} onMovePitch={movePitch}

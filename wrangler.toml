@@ -39,7 +39,7 @@ enabled = true
 [vars]
 APP_NAME = "Personal Accompanist"
 # Songs a new account gets for free, and how many pages count as one song.
-TRIAL_SONGS = "1"
+TRIAL_SONGS = "5"
 PAGES_PER_SONG = "6"
 MAX_PAGES = "40"
 # First reading of a page uses MODEL_PRIMARY; the free retries use MODEL_RETRY.

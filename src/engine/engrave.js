@@ -57,6 +57,15 @@ function noteCenterX(n){
  * Returns one entry per system (line of music) with the x-position of every beat, used for
  * the playhead, click-to-seek, highlighting and page turns.
  */
+/** Where a clap ("X") is drawn: an x notehead on the middle line, spelled as the key signature
+    spells that line, so no accidental appears next to it. */
+const MID_LINE = {treble: ["B", 4], treble8: ["B", 4], bass: ["D", 3], alto: ["C", 4], tenor: ["A", 3]};
+function clapKey(clef, key){
+  const [L, o] = MID_LINE[clef] || MID_LINE.treble;
+  const sharp = "FCGDAEB".indexOf(L) < key, flat = "BEADGCF".indexOf(L) < -key;
+  return `${L.toLowerCase()}${sharp ? "#" : flat ? "b" : ""}/${o}/x2`;
+}
+
 export function engrave(host, sc, opts){
   O = {zoom: 1, lyricsAbove: false, hiddenLines: new Set(), ...opts};
   const onSeek = opts.onSeek || (() => {});
@@ -64,13 +73,15 @@ export function engrave(host, sc, opts){
   const systemsOut = [];
   if(!sc || !sc.measures.length) return systemsOut;
   const zoom = O.zoom;
-  const avail = Math.max(300, host.clientWidth || 800);
+  const avail = Math.max(220, host.clientWidth || 800);
   const W = avail / zoom;
   const keys = staffKeys(sc);
   const multi = keys.length > 1;
   const named = sc.parts.length > 1;
   const left0 = named ? 78 : (multi ? 30 : 6), leftN = named ? 46 : (multi ? 30 : 6), right = 4;
-  const mw = sc.measures.map(m => measureMinWidth(m, keys));
+  const mw = sc.measures.map(m => measureMinWidth(m, keys) + (m.repStart ? 14 : 0) + (m.repEnd ? 10 : 0)
+    + Math.max(m.jump ? (m.jump.al ? 92 : 40) : 0, m.toCoda ? 80 : 0, m.fine ? 36 : 0) * 0.6);
+  const sameEnding = (a, b) => a && b && a.ending && b.ending && a.ending.join() === b.ending.join();
   const prefixW = (m, first, withTime) => (first ? 36 + Math.abs(m.key)*10 + 4 : 0) + (!first && m.keyChange ? Math.abs(m.key)*10 + 18 : 0) + (withTime ? 28 : 0);
   // greedy line breaking
   const systems = []; let cur = [], used = 0;
@@ -94,8 +105,10 @@ export function engrave(host, sc, opts){
     const isLast = si === systems.length-1;
     const extra = (isLast && minSum < lim*.65) ? Math.min(lim - minSum, minSum*.25) : Math.max(0, lim - minSum);
     const mwSum = idxs.reduce((s, mi) => s + mw[mi], 0);
-    const widths = idxs.map((mi, j) => mw[mi] + pres[j] + extra*mw[mi]/mwSum);
-    const sysHasTop = idxs.some(mi => sc.measures[mi].showTempo || sc.measures[mi].text) ;
+    // a bar wider than a small phone's screen is squeezed to fit, rather than running off the side
+    const squeeze = minSum > lim ? lim / minSum : 1;
+    const widths = idxs.map((mi, j) => (mw[mi] + pres[j] + extra*mw[mi]/mwSum) * squeeze);
+    const sysHasTop = idxs.some(mi => { const m = sc.measures[mi]; return m.showTempo || m.text || m.ending || m.segno || m.coda || m.toCoda || m.fine || m.jump; });
     const provisional = () => {
     let y = sysHasTop ? 30 : 4;
     const staffY = {};
@@ -144,6 +157,20 @@ export function engrave(host, sc, opts){
           if(m.timeChange) s.addTimeSignature(`${m.time[0]}/${m.time[1]}`);
         }
         if(mi === lastIdx) s.setEndBarType(VF.Barline.type.END);
+        // repeat signs
+        if(m.repStart) s.setBegBarType(VF.Barline.type.REPEAT_BEGIN);
+        if(m.repEnd) s.setEndBarType(VF.Barline.type.REPEAT_END);
+        if(st === keys[0]){
+          if(m.ending){
+            const prevM = sc.measures[mi-1], nextM = sc.measures[mi+1];
+            const first = !sameEnding(prevM, m) || j === 0, last = !sameEnding(m, nextM);
+            const closed = last && !!m.repEnd, T = VF.VoltaType || VF.Volta.type;
+            const type = first ? (last ? (closed ? T.BEGIN_END : T.BEGIN) : T.BEGIN) : (last && closed ? T.END : T.MID);
+            // VexFlow puts the bracket 60 units over the top line; bring it down to just over the notes
+            const above = ((EXT && EXT[st.key]) || {above: 0}).above;
+            s.setVoltaType(type, first && sameEnding(prevM, m) ? "" : m.ending.join(", ") + ".", 32 - above - (m.showTempo || m.text ? 20 : 0));
+          }
+        }
         s.setContext(ctx).draw();
         staves[st.key] = s;
       });
@@ -173,6 +200,11 @@ export function engrave(host, sc, opts){
             let n;
             if(e.mrest) n = new VF.StaveNote({clef:VF_CLEF[st.clef], keys:[REST_KEY[st.clef]], duration:"wr", align_center:true});
             else if(e.rest) n = new VF.StaveNote({clef:VF_CLEF[st.clef], keys:[REST_KEY[st.clef]], duration:e.dur+"r", dots:e.dots});
+            else if(e.clap){
+              const opt = {clef:VF_CLEF[st.clef], keys:[clapKey(st.clef, m.key)], duration:e.dur, dots:e.dots};
+              if(stemDir) opt.stem_direction = stemDir; else opt.auto_stem = true;
+              n = new VF.StaveNote(opt);
+            }
             else {
               const opt = {clef:VF_CLEF[st.clef], keys:e.pitches.map(p=>keyStr(p, shift)), duration:e.dur, dots:e.dots};
               if(stemDir) opt.stem_direction = stemDir; else opt.auto_stem = true;
@@ -282,10 +314,28 @@ export function engrave(host, sc, opts){
         if(m.showTempo){
           const t = svgEl(svg, "text", {x: tx, y: ty, class:"tempo"});
           svgEl(t, "tspan", {class:"qn"}, "\u2669");
-          svgEl(t, "tspan", {}, ` = ${Math.round(m.tempo)}${m.tempoText ? "   " + m.tempoText : ""}`);
+          // on a narrow screen the tempo word may not fit: keep the number, drop the word
+          const words = m.tempoText && tx + textW(`= ${Math.round(m.tempo)}   ${m.tempoText}`) + 24 <= W - 4 ? m.tempoText : "";
+          svgEl(t, "tspan", {}, ` = ${Math.round(m.tempo)}${words ? "   " + words : ""}`);
           tx += (`= ${Math.round(m.tempo)}   ${m.tempoText}`).length * 7.4 + 30;
         }
         if(m.text) svgEl(svg, "text", {x: tx, y: ty, class:"mtext"}, m.text);
+      }
+      // segno / coda signs at the start of the bar, Fine / D.C. / D.S. / To Coda at its end
+      if(m.segno || m.coda || m.fine || m.jump || m.toCoda){
+        const E0 = (EXT && EXT[keys[0].key]) || {above:0, dyn:false};
+        const top = staffY[keys[0].key] + 40 - E0.above - (keys[0].part.role === "vocal" && !O.lyricsAbove && E0.dyn ? 24 : 0);
+        const y = top - 10 - (m.showTempo || m.text ? 20 : 0) - (m.ending ? 22 : 0);
+        let gx = (j === 0 ? startX - 4 : x + 4);
+        const glyph = (name, gx2) => { try{ VF.Glyph.renderGlyph(ctx, gx2, y + 2, name === "coda" ? 34 : 28, name, {category: name}); }catch(_){} };
+        if(m.segno){ glyph("segno", gx); gx += 22; }
+        if(m.coda) glyph("coda", gx);
+        const words = [];
+        if(m.fine) words.push("Fine");
+        if(m.jump) words.push((m.jump.to === "start" ? "D.C." : "D.S.") + (m.jump.al === "fine" ? " al Fine" : m.jump.al === "coda" ? " al Coda" : ""));
+        let rx = x + w - 6;
+        if(m.toCoda){ glyph("coda", rx - 16); rx -= 24; words.push("To Coda"); }
+        if(words.length) svgEl(svg, "text", {x: rx, y, class: "jump", "text-anchor": "end"}, words.join("   "));
       }
       // measure number at system start
       if(j===0 && si>0) svgEl(svg, "text", {x: x + 2, y: staffY[keys[0].key] + 40 - Math.max(8, ((EXT && EXT[keys[0].key]) || {above:0}).above * 0 + 8), class:"mnum"}, String(m.num));

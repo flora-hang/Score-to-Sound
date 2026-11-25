@@ -4,7 +4,7 @@ This guide puts the app online on Cloudflare with:
 
 - **AI reading** of PDFs and photos through your own Claude API key (users never see the key)
 - **Sign-in** by email link or Google
-- **1 free song** for every new account, then **song packs and a monthly plan** paid through Stripe
+- **5 free songs** for every new account, then **song packs and a monthly plan** paid through Stripe
 
 Everything except the AI itself runs on Cloudflare. Menu names on these websites change from time to time, so a button may be worded slightly differently from what's written here.
 
@@ -136,7 +136,7 @@ All of these are in `wrangler.toml` under `[vars]`. Edit them on GitHub and comm
 
 | Setting | Default | What it does |
 |---|---|---|
-| `TRIAL_SONGS` | 1 | Free songs for each new account |
+| `TRIAL_SONGS` | 5 | Free songs for each new account |
 | `PAGES_PER_SONG` | 6 | How many pages count as one song |
 | `MODEL_PRIMARY` | claude-sonnet-5-5 | Model for the first reading of each page |
 | `MODEL_RETRY` | claude-opus-5-5 | Model for the free retries (most careful) |

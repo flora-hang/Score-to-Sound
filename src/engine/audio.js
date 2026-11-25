@@ -29,7 +29,15 @@ export class Player {
     loadLayer(0);
     this.lead = new Tone.PolySynth(Tone.Synth, {oscillator:{type:"fattriangle", count:2, spread:12}, envelope:{attack:.05, decay:.2, sustain:.75, release:.35}, volume:-9}).connect(new Tone.Vibrato(5.2, .07).connect(hall));
     this.click = new Tone.Synth({oscillator:{type:"sine"}, envelope:{attack:.001, decay:.05, sustain:0, release:.02}, volume:-6}).connect(out);
+    // A hand clap for 简谱 "X" beats: a short burst of filtered noise with a little room on it.
+    const clapTone = new Tone.Filter({type: "bandpass", frequency: 1350, Q: .9}).connect(new Tone.Gain(1).connect(hall));
+    clapTone.connect(out);
+    this.clapper = new Tone.NoiseSynth({noise: {type: "white"}, envelope: {attack: .001, decay: .11, sustain: 0, release: .03}, volume: -4}).connect(clapTone);
     this.onLoadState("loading");
+  }
+  clap(t, vel){
+    // a real clap is a few hands a few milliseconds apart
+    [0, .009, .019].forEach((d, i) => this.clapper.triggerAttackRelease(.012 + (i === 2 ? .07 : 0), t + d, vel * (i === 2 ? 1 : .7)));
   }
   pianoNote(note, dur, t, vel){
     const ready = this.layers.filter(L => L.ready);
@@ -90,6 +98,11 @@ export class Player {
       }
       queue.push({t: start + off, kind:"note", midi: n.midi, dur: Math.max(.05, end - start - Math.min(0, off)), vel: vel * mx.vol, inst: mx.inst});
     }
+    for(const c of sc.claps || []){
+      if(c.onset < from - 1e-6) continue;
+      const mx = o.mix[c.part]; if(!mx || !mx.on) continue;
+      queue.push({t: t0 + (secAt(sc, c.onset) - s0)/f, kind: "clap", vel: Math.min(1, c.vel * mx.vol * 1.1)});
+    }
     queue.sort((a,b) => a.t - b.t);
     const s = this.sched = {queue, i:0, t0, s0, from, f, view, timer:null, last: queue.length ? queue[queue.length-1].t : t0};
     this.playing = true;
@@ -98,7 +111,8 @@ export class Player {
       while(s.i < q.length && q[s.i].t < horizon){
         const it = q[s.i++], t = Math.max(it.t, Tone.now() + .005);
         try{
-          if(it.kind === "click") this.click.triggerAttackRelease(it.strong ? 1760 : 1175, .04, t, it.strong ? .9 : .55);
+          if(it.kind === "clap") this.clap(t, it.vel);
+          else if(it.kind === "click") this.click.triggerAttackRelease(it.strong ? 1760 : 1175, .04, t, it.strong ? .9 : .55);
           else if(it.inst === "lead" || !this.ready) this.lead.triggerAttackRelease(midiName(it.midi), it.dur, t, Math.min(1, it.vel*.95));
           else this.pianoNote(midiName(it.midi), it.dur, t, Math.min(1, it.vel));
         }catch(err){ console.warn(err); }

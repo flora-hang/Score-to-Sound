@@ -61,6 +61,7 @@ button{cursor:pointer}
 .desk-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:16px;color:var(--muted);font-size:13px}
 .hint{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
 .hint svg{color:var(--accent);flex:none}
+.hint .narrow{display:none}
 .pill{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:500;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
 .pill.warn{border-color:var(--warn);color:var(--warn);background:transparent;cursor:pointer}
 .scroller{flex:1;min-height:0;overflow:auto;padding-block:4px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:16px;scroll-behavior:auto}
@@ -84,6 +85,7 @@ button{cursor:pointer}
 .sys svg text.tempo .qn{font-size:20px;font-family:"Segoe UI Symbol","Noto Music","Apple Symbols",var(--font-display)}
 .sys svg text.tempo{font-family:var(--font-display);font-weight:600;font-size:13.5px}
 .sys svg text.mtext{font-family:var(--font-display);font-style:italic;font-size:13.5px}
+.sys svg text.jump{font-family:var(--font-display);font-style:italic;font-weight:600;font-size:13.5px}
 .sys svg text.mnum{font-family:var(--font-display);font-style:italic;font-size:10.5px;fill:var(--muted)}
 .sys svg text.pname{font-family:var(--font-display);font-size:12.5px}
 .sys svg line.hp{stroke:var(--ink);stroke-width:1}
@@ -217,10 +219,24 @@ kbd{font-family:var(--font-mono);font-size:12px;border:1px solid var(--line);bor
   .stepper{width:100%}
   #keysBtn{display:none}
   .hint{font-size:12px}
+  /* phones: give the score the room. The Click / 1-2-3 switches are also in the settings panel. */
+  .transport{padding-block:9px calc(8px + env(safe-area-inset-bottom,0px));gap:8px 10px}
+  .ttoggles{display:none}
+  .ctl label{display:none}
+  .ctl{gap:0}
+  .stepper{height:36px}
+  .stepper button{width:34px}
+  .stepper .val small{display:none}
+  .play{width:46px;height:46px}
+  .round{width:34px;height:34px}
+  .tgroup{gap:4px}
+  .hint .wide{display:none}
+  .hint .narrow{display:inline}
   .page{padding:18px 10px 24px}
   .formats{grid-template-columns:1fr}
 }
 @media (max-width:480px){ .brand b{display:none} }
+@media (max-width:380px){ .bar{gap:6px;padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px))} .bar .btn{padding:0 8px} .bar .acts,.bar nav{gap:4px} }
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 
 /* ---------------- Edit mode */

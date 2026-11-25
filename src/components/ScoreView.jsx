@@ -93,7 +93,7 @@ export default function ScoreView({view, transpose, zoom, lyricsAbove, hiddenLin
     if(!hit){ if(e.target.closest(".sys")) onSelect(null); return; }
     e.preventDefault();
     onSelect({addr: hit.ev.e.addr, pi: hit.pi});
-    if(!hit.ev.rest){
+    if(!hit.ev.rest && !hit.ev.e.clap && hit.ev.e.pitches[hit.pi]){
       onPreview(hit.ev.e.pitches[hit.pi].midi);
       drag.current = {ev: hit.ev, pi: hit.pi, sys: hit.sys, y0: e.clientY, steps: 0};
       host.current.setPointerCapture(e.pointerId);
@@ -128,7 +128,7 @@ export default function ScoreView({view, transpose, zoom, lyricsAbove, hiddenLin
   return (
     <section className={`desk${editing ? " editing" : ""}`} aria-label="Score">
       {editing ? toolbar : <div className="desk-tools">
-        <div className="hint"><Pointer /><span>Click any note to start from there, before or during playback.</span></div>
+        <div className="hint"><Pointer /><span className="wide">Click any note to start from there, before or during playback.</span><span className="narrow">Tap a note to start there.</span></div>
         {isDemo && backTo && <button className="pill link" onClick={onBack} title="Go back to the score you had open">← Back to {backTo.length > 32 ? backTo.slice(0, 30) + "…" : backTo}</button>}
         {isDemo ? <span className="pill">Example score</span>
           : onExample && <button className="pill link" onClick={onExample} title="Open the example score: the Habanera from Carmen">Open the example</button>}

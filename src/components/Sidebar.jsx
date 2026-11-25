@@ -107,7 +107,7 @@ export default function Sidebar({parts, mix, onMix, myPart, onMyPart, expressive
           </div>
         </div>
       </div>
-      <div className="note-box">Grand piano: Salamander Grand (Yamaha C5) by Alexander Holm, CC BY 3.0, in a concert-hall reverb. Playback follows tempo, meter, dynamics, hairpins, slurs, ties, articulation and fermatas. Repeats are played once, as printed.<div className="legal-links"><a href="./privacy" target="_blank" rel="noopener">Privacy</a><a href="./terms" target="_blank" rel="noopener">Terms</a></div></div>
+      <div className="note-box">Grand piano: Salamander Grand (Yamaha C5) by Alexander Holm, CC BY 3.0, in a concert-hall reverb. Playback follows tempo, meter, dynamics, hairpins, slurs, ties, articulation and fermatas. Repeat signs, 1st and 2nd endings, D.C., D.S., Fine and Coda are followed.<div className="legal-links"><a href="./privacy" target="_blank" rel="noopener">Privacy</a><a href="./terms" target="_blank" rel="noopener">Terms</a></div></div>
     </aside>
   );
 }

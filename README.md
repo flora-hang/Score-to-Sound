@@ -26,7 +26,7 @@ npm run preview    # serve the production build
 
 **Publish to GitHub Pages:** push to `main`, then in the repo's Settings → Pages choose **Source: GitHub Actions**. The included workflow builds and deploys automatically.
 
-**AI reading of PDFs and photos** runs through a small server on Cloudflare (in `worker/`) that calls the Claude API with your key, with sign-in (email link or Google), one free song per new account, and song credits. **Free reading** runs in a Cloudflare Container (`omr/`, `worker/omr.js`): homr for staff notation (no lyrics), and `omr/jianpu.py` for 简谱 (melody and lyrics). The app tells the two apart by looking for staff lines, and people can change it. See **[DEPLOY.md](DEPLOY.md)** for step-by-step setup. Without the server (for example on GitHub Pages) the app opens MusicXML files only.
+**AI reading of PDFs and photos** runs through a small server on Cloudflare (in `worker/`) that calls the Claude API with your key, with sign-in (email link or Google), five free songs per new account, and song credits. **Free reading** runs in a Cloudflare Container (`omr/`, `worker/omr.js`): homr for staff notation (no lyrics), and `omr/jianpu.py` for 简谱 (melody and lyrics). The app tells the two apart by looking for staff lines, and people can change it. See **[DEPLOY.md](DEPLOY.md)** for step-by-step setup. Without the server (for example on GitHub Pages) the app opens MusicXML files only.
 
 ## How it's built
 
@@ -62,7 +62,7 @@ src/
     ├── notation.js         Text notation parser and writer (round-trips exactly)
     ├── edit.js             Visual editing operations (pitch, accidentals, length, rest, tie, lyrics…)
     ├── keys.js             Key signatures and transposition with correct spelling
-    ├── timeline.js         Note timing, tempo map (rit., fermatas) and expressive shaping
+    ├── timeline.js         Note timing, tempo map (rit., fermatas), expressive shaping, and the played order (repeats)
     ├── engrave.js          VexFlow engraving with collision-free layout bands
     ├── playhead.js         Playhead, note highlighting and page turns
     ├── audio.js            Four-layer sampled piano and the playback scheduler
@@ -87,6 +87,7 @@ Design notes:
 - **State lives in React.** The open score, key, tempo, parts and display options are React state in `App.jsx`. The transposed, timed score is derived with `useMemo`, so changing the key recomputes it once and every component updates.
 - **Fast things bypass re-rendering.** The playhead moves 60 times a second. Instead of storing the position in state, `useClock` lets `ScoreView` and `Transport` subscribe and update only what changed, so the rest of the app doesn't re-render every frame.
 - **VexFlow is wrapped, not rewritten.** `ScoreView` gives VexFlow an empty element through a ref and re-engraves in a layout effect when the music, size or lyric options change.
+- **Repeats are unfolded only for playback.** The score is drawn as printed; `withPerformance` builds `view.perf`, the bars in the order they're played (repeat signs, 1st/2nd endings, D.C./D.S., Fine, Coda; bar options `repeat-start`, `repeat-end[=n]`, `ending=1,2`, `segno`, `coda`, `tocoda`, `fine`, `dc`/`ds`[`-al-fine`|`-al-coda`]). Playback, the bar counter and the scrubber use played positions; the playhead maps them back to the printed page. `X:q` is an unpitched clap.
 - **Editing goes through one path.** Every visual edit changes a copy of the score, writes it back to text notation and re-reads it. Undo/redo, saving and the text editor all see exactly the same score. Edits made while the song is transposed are applied as intervals, so they land correctly in the original key.
 - **The server builds the prompt.** The browser only sends page images; the reading instructions are put together on the server from the pages already read. Your API key can only ever be used to read sheet music, and the key never reaches the browser.
 - **Credits are safe against double-spending.** Songs are taken with a single conditional database update, every change is recorded in a ledger, and a score that can't be read at all is refunded.
