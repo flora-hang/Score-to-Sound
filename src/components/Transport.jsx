@@ -4,11 +4,12 @@ import { keyLabel } from "../engine/keys.js";
 import { Stepper } from "./Controls.jsx";
 import { ToStart, Prev, Next, Play, Pause, Minus, Plus, Metronome } from "./Icons.jsx";
 
-/** Bar/beat text, tempo and progress for a position in beats. */
-function describe(view, b, tempoF){
+/** Bar/beat text, tempo and progress for a played position in beats (along view.perf). */
+function describe(printed, b, tempoF){
+  const view = printed.perf || printed;
   const m = measureAt(view, b), u = beatUnit(m);
   let inBar = b - m.start; if(m.partial && m.idx === 0) inBar += m.nominal - m.len;
-  const last = view.measures[view.measures.length-1].num;
+  const last = printed.measures[printed.measures.length-1].num;
   return {
     main: `Bar ${m.num} of ${last}`,
     beat: Math.floor(inBar / u + 1e-6) + 1,
@@ -26,7 +27,7 @@ export default function Transport({view, playing, cursor, clock, tempoF, transpo
 
   // Scrubber: drag while stopped moves the start point; while playing, jump on release.
   const scrub = useRef(null), dragging = useRef(false);
-  const at = e => { const r = scrub.current.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left)/r.width)) * view.total; };
+  const at = e => { const r = scrub.current.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left)/r.width)) * (view.perf || view).total; };
 
   const pct = Math.round(tempoF * 100);
   const firstKey = view.measures[0] ? view.measures[0].key : view.key;

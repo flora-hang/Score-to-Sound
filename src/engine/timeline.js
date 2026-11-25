@@ -1,5 +1,5 @@
 /* Timeline: when every note sounds, the tempo map (rit., fermatas), and expression. */
-import { DYN_LEVEL } from "./notation.js";
+import { DYN_LEVEL, playOrder } from "./notation.js";
 
 const EPS = 1e-6;
 export function rnd(x){ const v = Math.sin(x * 12.9898) * 43758.5453; return (v - Math.floor(v)) * 2 - 1; }
@@ -20,7 +20,7 @@ export function buildTimeline(sc, {expressive = true} = {}){
   sc.total = beat;
   const keys = staffKeys(sc);
   const partOf = {}; keys.forEach(k=>partOf[k.key]=k.part.id);
-  const notes = [], pend = {}, fermatas = [], marks = {};
+  const notes = [], pend = {}, fermatas = [], marks = {}, claps = [];
   const slurDepth = {};
   for(const m of sc.measures){
     for(const k in m.staves){
@@ -37,6 +37,7 @@ export function buildTimeline(sc, {expressive = true} = {}){
           (marks[e.part] ||= []).push(e);
           if(e.arts.includes("fe")) fermatas.push([e.onset, e.onset + e.beats]);
           if(e.rest) continue;
+          if(e.clap){ claps.push({part: e.part, onset: e.onset, ev: e, m}); continue; }
           for(const p of e.pitches){
             const tk = `${vk}|${p.midi}`;
             const pn = pend[tk];
@@ -118,6 +119,49 @@ export function buildTimeline(sc, {expressive = true} = {}){
   for(const n of notes){ const ps = n.ev.pitches; n.cn = ps.length; n.ci = ps.findIndex(p => p.midi === n.midi); n.span = ps.length ? ps[ps.length-1].midi - ps[0].midi : 0; }
   if(expressive) shapePerformance(sc, notes);
   sc.notes = notes;
+  for(const c of claps) c.vel = Math.max(.2, Math.min(1, levelAt(c.part, c.onset) * (c.ev.arts.includes("ac") ? 1.25 : 1)));
+  sc.claps = claps;
+}
+
+/**
+ * The score as it is played: bars repeated and skipped as the repeat signs, endings, D.C./D.S. say.
+ * `view` is laid out and drawn in printed order; playback, the position, the bar counter and the
+ * scrubber use `view.perf`. Without repeat signs the two are the same object.
+ * Every played bar remembers its printed bar (`src`), so a played position can be shown on the page.
+ */
+export function withPerformance(view, opts){
+  buildTimeline(view, opts);
+  const order = playOrder(view.measures);
+  if(order.length === view.measures.length && order.every((x, i) => x === i)){ view.perf = view; return view; }
+  const perf = {...view, measures: order.map(i => {
+    const m = view.measures[i], staves = {};
+    for(const k in m.staves) staves[k] = m.staves[k].map(v => v.map(e => ({...e, orig: e})));
+    return {...m, staves, src: i};
+  })};
+  // the first bar of each pass shows its tempo (so a repeat back into a slower part slows down again)
+  perf.measures.forEach((m, j) => { if(j && perf.measures[j-1].tempo !== m.tempo) m.tempoChange = true; });
+  buildTimeline(perf, opts);
+  view.perf = perf;
+  return view;
+}
+/** A played position (beats along view.perf) → the position on the printed page (beats along view). */
+export function writtenBeat(view, p){
+  if(!view.perf || view.perf === view) return p;
+  const m = measureAt(view.perf, p), src = view.measures[m.src];
+  return src.start + Math.min(p - m.start, src.len - 1e-6);
+}
+/** A position on the printed page → the played position. A bar played more than once: the time it
+    is played nearest to `near` (where you are now), so clicking inside a repeat stays in this pass. */
+export function playedBeat(view, b, near = 0){
+  if(!view.perf || view.perf === view) return b;
+  const w = measureAt(view, b);
+  let best = null;
+  for(const m of view.perf.measures){
+    if(m.src !== w.idx) continue;
+    const p = m.start + (b - w.start);
+    if(best === null || Math.abs(p - near) < Math.abs(best - near)) best = p;
+  }
+  return best === null ? 0 : best;
 }
 /* A pianist's touch: voicing, phrasing, metric weight, and sustain pedal. */
 function shapePerformance(sc, notes){

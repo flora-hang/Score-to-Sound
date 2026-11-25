@@ -14,11 +14,12 @@ function parsePitch(s){
 }
 
 function parseEvent(tok, warns, where, last){
-  const m = tok.match(/^(R|r|[A-Ga-g](?:##|bb|#|b|n|x)?-?\d(?:\+[A-Ga-g](?:##|bb|#|b|n|x)?-?\d)*)(?::(w|h|q|8|16|32|64)(\.{0,2})(t\d)?)?(.*)$/);
+  const m = tok.match(/^(R|r|X|[A-Ga-g](?:##|bb|#|b|n|x)?-?\d(?:\+[A-Ga-g](?:##|bb|#|b|n|x)?-?\d)*)(?::(w|h|q|8|16|32|64)(\.{0,2})(t\d)?)?(.*)$/);
   if(!m){ warns.push(`${where}: couldn't read "${tok}"`); return null; }
   const e = {rest:false, mrest:false, pitches:[], dur:m[2]||(last&&last.dur)||"q", dots:m[3]?m[3].length:(m[2]?0:(last?last.dots:0)), tup:m[4]||null, tie:false, slurS:false, slurE:false, arts:[], dyn:null, hp:null, lyrics:[]};
   if(m[1]==="R"){ e.rest = e.mrest = true; e.dur="w"; e.dots=0; e.tup=null; }
   else if(m[1]==="r"){ e.rest = true; }
+  else if(m[1]==="X"){ e.clap = true; }   // an unpitched beat (简谱 "X"): played as a clap, drawn with an x notehead
   else {
     for(const ps of m[1].split("+")){ const p = parsePitch(ps); if(p) e.pitches.push(p); else warns.push(`${where}: bad pitch "${ps}"`); }
     if(!e.pitches.length) return null;
@@ -84,6 +85,14 @@ export function parseScore(text){
         else if(/^(pickup|partial|anacrusis)$/i.test(seg)) cur.partial = true;
         else if(/^rit/i.test(seg)) cur.rit = true;
         else if((o = seg.match(/^text\s*=\s*"([^"]*)"/i))) cur.text = o[1];
+        else if(/^repeat-?start$/i.test(seg)) cur.repStart = true;
+        else if((o = seg.match(/^repeat-?end(?:\s*=\s*(\d+))?$/i))) cur.repEnd = Math.max(2, Math.min(9, +(o[1] || 2)));
+        else if((o = seg.match(/^ending\s*=\s*([\d\s,]+)$/i))){ const n = o[1].split(/[\s,]+/).filter(Boolean).map(Number).filter(x => x >= 1 && x <= 9); if(n.length) cur.ending = n; }
+        else if(/^segno$/i.test(seg)) cur.segno = true;
+        else if(/^coda$/i.test(seg)) cur.coda = true;
+        else if(/^to-?coda$/i.test(seg)) cur.toCoda = true;
+        else if(/^fine$/i.test(seg)) cur.fine = true;
+        else if((o = seg.match(/^(dc|ds)(?:-al-(fine|coda))?$/i))) cur.jump = {to: o[1].toLowerCase() === "dc" ? "start" : "segno", al: o[2] ? o[2].toLowerCase() : null};
         else warns.push(`Line ${lineNo}: unknown bar setting "${seg}"`);
       }
       if(cur.rit && !cur.text) cur.text = "rit.";
@@ -156,7 +165,7 @@ export function eventToText(e){
   const marks = (e.tie ? "~" : "") + (e.slurS ? "(" : "") + (e.slurE ? ")" : "")
     + (e.arts || []).map(a => "!" + a).join("") + (e.hp ? "!" + e.hp : "") + (e.hpEnd ? "!he" : "") + (e.dyn ? "@" + e.dyn : "");
   if(e.mrest) return "R" + marks + lyr.map(q).join("");
-  const head = e.rest ? "r" : e.pitches.map(p => `${p.step}${ACC_OUT[p.alt] ?? ""}${p.oct}`).join("+");
+  const head = e.rest ? "r" : e.clap ? "X" : e.pitches.map(p => `${p.step}${ACC_OUT[p.alt] ?? ""}${p.oct}`).join("+");
   return `${head}:${e.dur}${".".repeat(e.dots || 0)}${e.tup || ""}${marks}${lyr.map(q).join("")}`;
 }
 /** The inverse of parseScore: turns a (possibly edited) score back into text notation. */
@@ -174,8 +183,60 @@ export function serializeScore(sc){
     if(m.partial) o.push("pickup");
     if(m.rit) o.push("rit");
     if(m.text && !(m.rit && m.text === "rit.")) o.push(`text=${q(m.text)}`);
+    if(m.repStart) o.push("repeat-start");
+    if(m.segno) o.push("segno");
+    if(m.coda) o.push("coda");
+    if(m.ending) o.push(`ending=${m.ending.join(",")}`);
+    if(m.repEnd) o.push(m.repEnd > 2 ? `repeat-end=${m.repEnd}` : "repeat-end");
+    if(m.toCoda) o.push("tocoda");
+    if(m.fine) o.push("fine");
+    if(m.jump) o.push(`${m.jump.to === "start" ? "dc" : "ds"}${m.jump.al ? "-al-" + m.jump.al : ""}`);
     out.push(`M ${m.num}${o.length ? " | " + o.join(" | ") : ""}`);
     for(const k in m.staves) out.push(`${k}: ${m.staves[k].map(v => v.map(eventToText).join(" ")).join(" // ")}`);
   });
   return out.join("\n") + "\n";
+}
+
+/* ---------------------------------------------------------------- repeats
+   The order bars are played in, following repeat signs, 1st/2nd endings, D.C./D.S., Fine and Coda.
+   Returns bar indexes. Conventions: a repeat goes back to the last start-repeat sign (or the beginning,
+   or the bar after the previous end-repeat); after a D.C. or D.S. repeats aren't taken again and the
+   last ending is played; "al Fine" stops at Fine, "al Coda" jumps from To Coda to the Coda. */
+export function playOrder(measures){
+  const n = measures.length, order = [];
+  if(!measures.some(m => m.repStart || m.repEnd || m.ending || m.jump)) return measures.map((_, i) => i);
+  // each run of bars with the same ending numbers is one bracket; the highest number in a group of brackets
+  const groupMax = new Array(n).fill(0);
+  for(let i = 0; i < n; ){
+    if(!measures[i].ending){ i++; continue; }
+    let j = i, mx = 0;
+    while(j < n && measures[j].ending){ mx = Math.max(mx, ...measures[j].ending); j++; }
+    for(let k = i; k < j; k++) groupMax[k] = mx;
+    i = j;
+  }
+  const segno = measures.findIndex(m => m.segno), coda = measures.findIndex(m => m.coda);
+  let i = 0, start = 0, pass = 1, jumped = null, guard = 0;
+  while(i < n && guard++ < n * 12 + 50){
+    const m = measures[i];
+    if(m.repStart && i !== start){ start = i; pass = 1; }
+    if(m.ending){
+      // after a D.C./D.S. the last ending is played; otherwise the ending for this time through
+      // (a bar under "1." only is skipped the second time, even if no "2." is printed)
+      const want = jumped ? groupMax[i] : pass;
+      if(!m.ending.includes(want)){ i++; continue; }
+    }
+    order.push(i);
+    if(jumped && jumped.al === "fine" && m.fine) break;
+    if(jumped && jumped.al === "coda" && m.toCoda && coda > i){ i = coda; continue; }
+    if(m.repEnd && !jumped && pass < m.repEnd){ pass++; i = start; continue; }
+    if(m.repEnd){ start = i + 1; pass = 1; }
+    if(m.jump && !jumped){
+      jumped = {...m.jump, al: m.jump.al || (measures.some((x, k) => x.fine && k !== i) ? "fine" : measures.some(x => x.toCoda) && coda >= 0 ? "coda" : null)};
+      i = m.jump.to === "segno" && segno >= 0 ? segno : 0;
+      start = i; pass = 1;
+      continue;
+    }
+    i++;
+  }
+  return order;
 }

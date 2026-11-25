@@ -363,7 +363,7 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
           {notation === "jianpu" ? (
             <div className="choice">
               <b>Read free</b>
-              <span>The melody <b>and lyrics</b>. About 20 seconds a page, no sign-in needed. Repeat signs aren't followed yet: the music is read straight through.</span>
+              <span>The melody <b>and lyrics</b>, with repeat signs, 1st/2nd endings and claps (X). About 20 seconds a page, no sign-in needed.</span>
               <button className="btn primary" onClick={startFree}>Read free</button>
             </div>
           ) : (
@@ -376,7 +376,7 @@ export default function ImportDialog({sample, account, onOpenText, onClose}){
           {gate.ai && (
             <div className="choice">
               <b>Read with AI · {plural(gate.songs, "song")}</b>
-              <span>{notation === "jianpu" ? "Melody and lyrics, and it can follow repeats." : <>Notes <b>and lyrics</b>, the most accurate.</>} {account.user ? `You have ${plural(credits, "song")}.` : `Your first ${account.config.trialSongs === 1 ? "song is" : plural(account.config.trialSongs, "song") + " are"} free.`}</span>
+              <span>{notation === "jianpu" ? "Melody and lyrics, the most accurate, and it reads D.C., D.S. and Fine too." : <>Notes <b>and lyrics</b>, the most accurate.</>} {account.user ? `You have ${plural(credits, "song")}.` : `Your first ${account.config.trialSongs === 1 ? "song is" : plural(account.config.trialSongs, "song") + " are"} free.`}</span>
               <button className="btn" onClick={gateAI}>Read with AI</button>
             </div>
           )}
